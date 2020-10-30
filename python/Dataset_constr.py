@@ -34,12 +34,14 @@ import warnings
 from scipy.sparse import SparseEfficiencyWarning
 warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
-import Dataset_constr, enclosing_subgraph
+from DataSet import *
+import enclosing_subgraph
 
 
 def main(): 
     args = parse_args()
     dataset = PygLinkPropPredDataset(name=args.dataset)
+    data = dataset[0]
 
     split_edge = dataset.get_edge_split()
 
@@ -94,7 +96,7 @@ def main():
         max_nodes_per_hop=args.max_nodes_per_hop, 
     )
 
-def parse_args();
+def parse_args():
     parser = argparse.ArgumentParser(description='Dataset Creation')
     parser.add_argument('--dataset', type=str, default='ogbl-collab')
     parser.add_argument('--num_hops', type=int, default=1)

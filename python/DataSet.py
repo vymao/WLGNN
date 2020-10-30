@@ -34,6 +34,8 @@ import warnings
 from scipy.sparse import SparseEfficiencyWarning
 warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
+from enclosing_subgraph import *
+
 class WLDataset(InMemoryDataset):
     def __init__(self, root, data, split_edge, num_hops, percent=100, split='train', 
                  use_coalesce=False, node_label='drnl', ratio_per_hop=1.0, 
@@ -47,15 +49,15 @@ class WLDataset(InMemoryDataset):
         self.node_label = node_label
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
-        super(SEALDataset, self).__init__(root)
+        super(WLDataset, self).__init__(root)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
     @property
     def processed_file_names(self):
         if self.percent == 100:
-            name = 'SEAL_{}_data'.format(self.split)
+            name = 'WLSEAL_{}_data'.format(self.split)
         else:
-            name = 'SEAL_{}_data_{}'.format(self.split, self.percent)
+            name = 'WLSEAL_{}_data_{}'.format(self.split, self.percent)
         name += '.pt'
         return [name]
 
