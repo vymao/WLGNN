@@ -109,20 +109,41 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
         z = drnl_node_labeling(adj, 0, 1)
     elif node_label == 'hop':
         z = torch.tensor(dists)
+
+    line_graph_Data = construct_line_graph(node_ids, adj, node_features)
     data = Data(node_features, edge_index, edge_weight=edge_weight, y=y, z=z, 
-                node_id=node_ids, num_nodes=num_nodes)
+                node_id=node_ids, num_nodes=num_nodes, line_graph=line_graph_Data)
     return data
 
-def construct_line_graph(node_ids, A, x, node_features, subsample=1): 
+def construct_line_graph(node_ids, A, node_features, subsample=1): 
+    info = {}
+    num_nodes = A.shape[0]
+
     G = nx.Graph(node_ids)
     rows, cols = A.nonzero()
+    A_edges = list(zip(rows,cols))
 
-    G.add_edges_from(list(zip(rows,cols)))
+    for edge in A_edges: 
+        src = edge[0]
+        end = edge[1]
+        weight = A[src][end]
+        f1, f2 = node_features[src], node_features[end]
+
+        info[(src, end)] = [weight] + f1 + f2
+
+    G.add_edges_from(A_edges)
 
     L = nx.line_graph(G)
 
+    L_node_ids = tolist(G.nodes)
+    L_edges = list(G.edges)
+    L_edges = list(map(list, L_edges))
 
-    data = Data(node_features, edge_index, node_id=node_ids, num_nodes=num_nodes)
+    L_node_features = []
+    for node in node_ids: 
+        L_node_features.append(info[node])
+
+    data = Data(torch.LongTensor(L_node_features), torch.LongTensor(L_edges), node_id=torch.LongTensor(node_ids), num_nodes=num_nodes)
     return data   
 
  

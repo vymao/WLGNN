@@ -55,7 +55,7 @@ def main():
 
 
     path = dataset.root + '_wl{}'.format(args.data_appendix)
-    use_coalesce = False
+    use_coalesce = True
 
     train_dataset = eval("WLDataset")(
         path, 
