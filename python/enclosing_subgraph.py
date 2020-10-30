@@ -11,6 +11,8 @@ from torch_geometric.data import DataLoader
 from torch_geometric.data import Data
 import pdb
 
+import networkx as nx
+
 
 def neighbors(fringe, A, row=True):
     # Find all 1-hop neighbors of nodes in fringe from graph A, 
@@ -110,6 +112,18 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
     data = Data(node_features, edge_index, edge_weight=edge_weight, y=y, z=z, 
                 node_id=node_ids, num_nodes=num_nodes)
     return data
+
+def construct_line_graph(node_ids, A, x, node_features, subsample=1): 
+    G = nx.Graph(node_ids)
+    rows, cols = A.nonzero()
+
+    G.add_edges_from(list(zip(rows,cols)))
+
+    L = nx.line_graph(G)
+
+
+    data = Data(node_features, edge_index, node_id=node_ids, num_nodes=num_nodes)
+    return data   
 
  
 def extract_enclosing_subgraphs(link_index, A, x, status, num_hops, node_label='drnl', 
