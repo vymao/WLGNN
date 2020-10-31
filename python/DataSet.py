@@ -1,4 +1,3 @@
-import argparse
 import math
 import time
 import random
@@ -27,8 +26,6 @@ from torch_geometric.data import Data, Dataset, InMemoryDataset, DataLoader
 from torch_geometric.utils import (negative_sampling, add_self_loops,
                                    train_test_split_edges, to_networkx, 
                                    to_scipy_sparse_matrix, to_undirected)
-
-from ogb.linkproppred import PygLinkPropPredDataset, Evaluator
 
 import warnings
 from scipy.sparse import SparseEfficiencyWarning
