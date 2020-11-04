@@ -118,23 +118,35 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
 
     L_node_features, L_edges,  L_num_nodes, w, z1, z2 = construct_line_graph(node_ids, adj, z, node_features)
     edge_weight = torch.ones(len(L_edges))
-
+    print(L_edges)
     data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
         z2=torch.LongTensor(z2), node_id=node_ids, num_nodes=num_nodes, o_data=o_data)
     return data
 
 def construct_line_graph(node_ids, A, z, node_features, subsample=1): 
     info = {}
-    
+    print("node_ids: ")
+    print(node_ids.size())
+    print("z: ")
+    print(z.size())
+    print("node_features: ")
+    print(node_features.size())
+    z = z.tolist()
+    node_ids = node_ids.tolist()
+    node_features = node_features.tolist()
+    print("A: ") 
+    print(A.shape)
 
-    G = nx.Graph(node_ids)
+    G = nx.Graph()
+    G.add_nodes_from(node_ids)
     rows, cols = A.nonzero()
     A_edges = list(zip(rows,cols))
+    print(A_edges)
 
     for edge in A_edges: 
         src, end = edge[0], edge[1]
         src_z, end_z = z[src], z[end]
-        weight = A[src][end]
+        weight = A[src,end]
         f1, f2 = node_features[src], node_features[end]
         info[(src, end)] = f1 + f2
         
@@ -142,8 +154,8 @@ def construct_line_graph(node_ids, A, z, node_features, subsample=1):
     L = nx.line_graph(G)
     num_nodes = L.number_of_nodes()
 
-    L_node_ids = list(G.nodes)
-    L_edges = list(G.edges)
+    L_node_ids = list(L.nodes)
+    L_edges = list(L.edges)
     L_edges = list(map(list, L_edges))
 
     L_node_features = []

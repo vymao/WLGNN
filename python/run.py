@@ -1,3 +1,6 @@
+import wandb
+wandb.init(project="cs-222")
+
 import argparse
 import math
 import time
@@ -36,8 +39,6 @@ import warnings
 from scipy.sparse import SparseEfficiencyWarning
 warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
-import wandb
-wandb.init(project="cs-222")
 
 from DataSet import *
 from WLGNN import *
