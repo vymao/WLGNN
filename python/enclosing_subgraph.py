@@ -101,9 +101,11 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
     
     node_ids = torch.LongTensor(node_ids)
     u, v = torch.LongTensor(u), torch.LongTensor(v)
-    r = torch.LongTensor(r)
-    edge_index = torch.stack([u, v], 0)
-    edge_weight = r.to(torch.float)
+
+    #r = torch.LongTensor(r)
+    #edge_index = torch.stack([u, v], 0)
+    #edge_weight = r.to(torch.float)
+
     y = torch.tensor([y])
     if node_label == 'drnl':
         z = drnl_node_labeling(adj, 0, 1)
@@ -115,9 +117,10 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
     else: o_data = None
 
     L_node_features, L_edges,  L_num_nodes, w, z1, z2 = construct_line_graph(node_ids, adj, z, node_features)
+    edge_weight = torch.ones(len(L_edges))
 
-    data = Data(L_node_features, edge_index, edge_weight=edge_weight, y=y, z=z, w=w, z1=z1, z2=z2,
-                node_id=node_ids, num_nodes=num_nodes, o_data=o_data)
+    data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
+        z2=torch.LongTensor(z2), node_id=node_ids, num_nodes=num_nodes, o_data=o_data)
     return data
 
 def construct_line_graph(node_ids, A, z, node_features, subsample=1): 
@@ -139,7 +142,7 @@ def construct_line_graph(node_ids, A, z, node_features, subsample=1):
     L = nx.line_graph(G)
     num_nodes = L.number_of_nodes()
 
-    L_node_ids = tolist(G.nodes)
+    L_node_ids = list(G.nodes)
     L_edges = list(G.edges)
     L_edges = list(map(list, L_edges))
 

@@ -12,6 +12,8 @@ import pdb
 
 import numpy as np
 from sklearn.metrics import roc_auc_score
+from sklearn.metrics import mean_squared_error
+
 import scipy.sparse as ssp
 import torch
 import torch.nn.functional as F
@@ -34,13 +36,18 @@ import warnings
 from scipy.sparse import SparseEfficiencyWarning
 warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
+import wandb
+wandb.init(project="cs-222")
+
 from DataSet import *
-import enclosing_subgraph
+from WLGNN import *
 
 
 
 def main(): 
     args = parse_args()
+    wandb.config.update(args)
+
     dataset = PygLinkPropPredDataset(name=args.dataset)
     data = dataset[0]
     split_edge = dataset.get_edge_split()
@@ -108,7 +115,8 @@ def main():
                          num_workers=args.num_workers)
 
     for run in range(args.runs):
-        model = WLCNN(hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
+        wandb.watch(model)
+        model = WLCNN_model(hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                       max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                       node_embedding=emb).to(device)
 
@@ -119,6 +127,7 @@ def main():
         print(f'Total number of parameters is {total_params}')
         if args.model == 'DGCNN':
             print(f'SortPooling k is set to {model.k}')
+        log_file = os.path.join(args.res_dir, 'log.txt')
         with open(log_file, 'a') as f:
             print(f'Total number of parameters is {total_params}', file=f)
             if args.model == 'DGCNN':
@@ -143,12 +152,16 @@ def main():
 
                     for key, result in results.items():
                         valid_res, test_res = result
+
+                        wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized MSE Train Loss": loss,
+                            "Valid_set MSE": valid_res, "Test_set MSE": test_res})
+
                         print(key)
                         print(f'Run: {run + 1:02d}, '
                               f'Epoch: {epoch:02d}, '
                               f'Loss: {loss:.4f}, '
-                              f'Valid: {100 * valid_res:.2f}%, '
-                              f'Test: {100 * test_res:.2f}%')
+                              f'Valid MSE: {valid_res:.2f}%, '
+                              f'Test MSE: {test_res:.2f}%')
 
     print(f'Results are saved in {args.res_dir}')
 
@@ -223,6 +236,7 @@ def train():
         edge_weight = data.edge_weight 
         node_id = data.node_id if emb else None
         out = model(data.z, data.z1, data.z2, data.w, data.edge_index, data.batch, x, edge_weight, node_id)
+        out = torch.round(out)
         loss = MSELoss()(out.view(-1), data.y.to(torch.float))
         loss.backward()
         optimizer.step()
@@ -240,12 +254,13 @@ def test():
         x = data.x if args.use_feature else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
-        logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
-        y_pred.append(logits.view(-1).cpu())
+        out = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        out = torch.round(out)
+        y_pred.append(out.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
     val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
-    pos_val_pred = val_pred[val_true==1]
-    neg_val_pred = val_pred[val_true==0]
+    #pos_val_pred = val_pred[val_true==1]
+    #neg_val_pred = val_pred[val_true==0]
 
     y_pred, y_true = [], []
     for data in tqdm(test_loader):
@@ -257,16 +272,17 @@ def test():
         y_pred.append(logits.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
-    pos_test_pred = test_pred[test_true==1]
-    neg_test_pred = test_pred[test_true==0]
+    #pos_test_pred = test_pred[test_true==1]
+    #neg_test_pred = test_pred[test_true==0]
     
-    if args.eval_metric == 'hits':
-        results = evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'mrr':
-        results = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    elif args.eval_metric == 'auc':
-        results = evaluate_auc(val_pred, val_true, test_pred, test_true)
-
+    #if args.eval_metric == 'hits':
+    #    results = evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
+    #elif args.eval_metric == 'mrr':
+    #    results = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
+    #elif args.eval_metric == 'auc':
+    #    results = evaluate_auc(val_pred, val_true, test_pred, test_true)
+    results = {}
+    results['MSE'] = (mean_squared_error(val_true, val_pred), mean_squared_error(test_true, test_pred))
     return results
 
 def evaluate_auc(val_pred, val_true, test_pred, test_true):
