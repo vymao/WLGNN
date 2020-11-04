@@ -102,17 +102,15 @@ class WLDynamicDataset(Dataset):
         self.node_label = node_label
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
-        super(SEALDynamicDataset, self).__init__(root)
+        super(WLDynamicDataset, self).__init__(root)
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
                                                self.data.edge_index, 
                                                self.data.num_nodes, 
                                                self.percent)
         self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
-        
-
         self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
-
+        
         if self.use_coalesce:  # compress mutli-edge into edge with weight
             self.data.edge_index, self.data.edge_weight = coalesce(
                 self.data.edge_index, self.data.edge_weight, 
@@ -130,17 +128,24 @@ class WLDynamicDataset(Dataset):
     def __len__(self):
         return len(self.links)
 
+    def process(self):
+        for idx in range(len(self.links)):
+            src, dst = self.links[idx]
+
+            if self.labels[idx]: status = "pos"
+            else: status = "neg"
+
+            tmp = k_hop_subgraph(src, dst, self.num_hops, self.A, status, self.ratio_per_hop, 
+                                 self.max_nodes_per_hop, node_features=self.data.x)
+            data = construct_pyg_graph(*tmp, self.node_label)
+
+            torch.save(data, osp..join(self.processed_dir, 'data_{}.pt'.format(idx)))
+
     def get(self, idx):
-        src, dst = self.links[idx]
-
-        if self.labels[idx]: status = "pos"
-        else: status = "neg"
-
-        tmp = k_hop_subgraph(src, dst, self.num_hops, self.A, status, self.ratio_per_hop, 
-                             self.max_nodes_per_hop, node_features=self.data.x)
-        data = construct_pyg_graph(*tmp, self.node_label)
-
+        data = torch.load(osp.join(self.processed_dir, 'data_{}.pt'.format(idx)))
         return data
+
+
 
 
 
