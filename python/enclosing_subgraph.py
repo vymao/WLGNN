@@ -156,17 +156,28 @@ def construct_line_graph(node_ids, A, z, node_features, subsample=1):
 
     L_node_ids = list(L.nodes)
     L_edges = list(L.edges)
-    L_edges = list(map(list, L_edges))
+    #L_edges = list(map(list, L_edges))
 
     L_node_features = []
     w, z1, z2 = [], [], []
+
+    index = {}
+    value = 0
     for node in L_node_ids: 
         L_node_features.append(info[node])
         w.append(weight)
         z1.append(z[node[0]])
         z2.append(z[node[1]])
+        index[node] = value
+        value += 1
 
-    return torch.LongTensor(L_node_features), torch.LongTensor(L_edges), num_nodes, w, z1, z2
+    edge_list = []
+    for edge in L_edges: 
+        v1, v2 = edge[0], edge[1]
+        n1, n2 = index[v1], index[v2]
+        edge_list.append([n1, n2])
+
+    return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, w, z1, z2
 
  
 def extract_enclosing_subgraphs(link_index, A, x, status, num_hops, node_label='drnl', 
