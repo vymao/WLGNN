@@ -65,7 +65,8 @@ def main():
     path = dataset.root + '_wl{}'.format(args.data_appendix)
     use_coalesce = True
 
-    train_dataset = eval("WLDataset")(
+    dataset_class = 'WLDynamicDataset' if args.dynamic_train else 'WLDataset'
+    train_dataset = eval(dataset_class)(
         path, 
         data, 
         split_edge, 
@@ -78,7 +79,8 @@ def main():
         max_nodes_per_hop=args.max_nodes_per_hop, 
     ) 
 
-    val_dataset = eval("WLDataset")(
+    dataset_class = 'WLDynamicDataset' if args.dynamic_val else 'WLDataset'
+    val_dataset = eval(dataset_class)(
         path, 
         data, 
         split_edge, 
@@ -91,7 +93,8 @@ def main():
         max_nodes_per_hop=args.max_nodes_per_hop, 
     )
 
-    test_dataset = eval("WLDataset")(
+    dataset_class = 'WLDynamicDataset' if args.dynamic_test else 'WLDataset'
+    test_dataset = eval(dataset_class)(
         path, 
         data, 
         split_edge, 
