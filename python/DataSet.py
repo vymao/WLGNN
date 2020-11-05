@@ -139,7 +139,7 @@ class WLDynamicDataset(Dataset):
                                  self.max_nodes_per_hop, node_features=self.data.x)
             data = construct_pyg_graph(*tmp, self.node_label)
 
-            torch.save(data, osp..join(self.processed_dir, 'data_{}.pt'.format(idx)))
+            torch.save(data, osp.join(self.processed_dir, 'data_{}.pt'.format(idx)))
 
     def get(self, idx):
         data = torch.load(osp.join(self.processed_dir, 'data_{}.pt'.format(idx)))
