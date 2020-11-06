@@ -125,17 +125,9 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
 
 def construct_line_graph(node_ids, A, z, node_features, subsample=1): 
     info = {}
-    #print("node_ids: ")
-    #print(node_ids.size())
-    #print("z: ")
-    #print(z.size())
-    #print("node_features: ")
-    #print(node_features.size())
     z = z.tolist()
     node_ids = node_ids.tolist()
     node_features = node_features.tolist()
-    #print("A: ") 
-    #print(A.shape)
 
     G = nx.Graph()
     G.add_nodes_from(node_ids)
