@@ -110,148 +110,6 @@ def test():
     results['MSE'] = (mean_squared_error(val_true, val_pred), mean_squared_error(test_true, test_pred))
     return results
 
-def main(): 
-    args = parse_args()
-    wandb.config.update(args)
-
-    dataset = PygLinkPropPredDataset(name=args.dataset)
-    data = dataset[0]
-    split_edge = dataset.get_edge_split()
-
-    if args.save_appendix == '':
-        args.save_appendix = '_' + time.strftime("%Y%m%d%H%M%S")
-    if args.data_appendix == '':
-        args.data_appendix = '_h{}_rph{}'.format(
-            args.num_hops, ''.join(str(args.ratio_per_hop).split('.')))
-        if args.max_nodes_per_hop is not None:
-            args.data_appendix += '_mnph{}'.format(args.max_nodes_per_hop)
-
-    args.res_dir = os.path.join('results/{}{}'.format(args.dataset, args.save_appendix))
-    print('Results will be saved in ' + args.res_dir)
-    if not os.path.exists(args.res_dir):
-        os.makedirs(args.res_dir) 
-
-    if args.use_valedges_as_input:
-        val_edge_index = split_edge['valid']['edge'].t()
-        val_edge_index = to_undirected(val_edge_index)
-        data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
-        val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
-        data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
-
-    path = dataset.root + '_wl{}'.format(args.data_appendix)
-    use_coalesce = True
-
-    #datalist = ['data_{}_{}.pt'.format(i, "t") for i in range(]
-
-    dataset_class = 'WLDynamicDataset' if args.dynamic_train else 'WLDataset'
-    train_dataset = eval(dataset_class)(
-        path, 
-        data, 
-        split_edge, 
-        num_hops=args.num_hops, 
-        percent=args.train_percent, 
-        split='train', 
-        use_coalesce=use_coalesce, 
-        node_label=args.node_label, 
-        ratio_per_hop=args.ratio_per_hop, 
-        max_nodes_per_hop=args.max_nodes_per_hop, 
-    ) 
-
-    dataset_class = 'WLDynamicDataset' if args.dynamic_val else 'WLDataset'
-    val_dataset = eval(dataset_class)(
-        path, 
-        data, 
-        split_edge, 
-        num_hops=args.num_hops, 
-        percent=args.val_percent, 
-        split='valid', 
-        use_coalesce=use_coalesce, 
-        node_label=args.node_label, 
-        ratio_per_hop=args.ratio_per_hop, 
-        max_nodes_per_hop=args.max_nodes_per_hop, 
-    )
-
-    dataset_class = 'WLDynamicDataset' if args.dynamic_test else 'WLDataset'
-    test_dataset = eval(dataset_class)(
-        path, 
-        data, 
-        split_edge, 
-        num_hops=args.num_hops, 
-        percent=args.test_percent, 
-        split='test', 
-        use_coalesce=use_coalesce, 
-        node_label=args.node_label, 
-        ratio_per_hop=args.ratio_per_hop, 
-        max_nodes_per_hop=args.max_nodes_per_hop, 
-    )
-    print('Using', torch.cuda.device_count(), 'GPUs!')
-
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
-    max_z = 1000  # set a large max_z so that every z has embeddings to look up
-
-    if args.multi_gpu: train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, 
-                          shuffle=True, num_workers=args.num_workers)
-    else: train_loader = DataLoader(train_dataset, batch_size=args.batch_size, 
-                          shuffle=True, num_workers=args.num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, 
-                        num_workers=args.num_workers)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, 
-                         num_workers=args.num_workers)
-
-    for run in range(args.runs):
-        emb = None
-        model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
-                      max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
-                      node_embedding=emb).to(device)
-
-        wandb.watch(model)
-
-        parameters = list(model.parameters())
-
-        optimizer = torch.optim.Adam(params=parameters, lr=args.lr)
-        total_params = sum(p.numel() for param in parameters for p in param)
-        print(f'Total number of parameters is {total_params}')
-        if args.model == 'DGCNN':
-            print(f'SortPooling k is set to {model.k}')
-        log_file = os.path.join(args.res_dir, 'log.txt')
-        with open(log_file, 'a') as f:
-            print(f'Total number of parameters is {total_params}', file=f)
-            if args.model == 'DGCNN':
-                print(f'SortPooling k is set to {model.k}', file=f)
-
-        start_epoch = 1
-        if args.multi_gpu: model = DataParallel(model)
-        # Training starts
-        for epoch in range(start_epoch, start_epoch + args.epochs):
-            loss = train()
-
-            if epoch % args.eval_steps == 0:
-                results = test()
-
-                if epoch % args.log_steps == 0:
-                    model_name = os.path.join(
-                        args.res_dir, 'model_checkpoint{}.pth'.format(epoch))
-                    optimizer_name = os.path.join(
-                        args.res_dir, 'optimizer_checkpoint{}.pth'.format(epoch))
-                    torch.save(model.state_dict(), model_name)
-                    torch.save(optimizer.state_dict(), optimizer_name)
-
-                    for key, result in results.items():
-                        valid_res, test_res = result
-
-                        wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized MSE Train Loss": loss,
-                            "Valid_set MSE": valid_res, "Test_set MSE": test_res})
-
-                        print(key)
-                        print(f'Run: {run + 1:02d}, '
-                              f'Epoch: {epoch:02d}, '
-                              f'Loss: {loss:.4f}, '
-                              f'Valid MSE: {valid_res:.2f}%, '
-                              f'Test MSE: {test_res:.2f}%')
-
-    print(f'Results are saved in {args.res_dir}')
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Dataset Creation')
@@ -311,5 +169,149 @@ def parse_args():
                         help="whether to use multi-gpu parallelism")
     return parser.parse_args()
 
-if __name__ == "__main__":
-    main()
+
+###SCRIPT START######
+
+args = parse_args()
+wandb.config.update(args)
+
+dataset = PygLinkPropPredDataset(name=args.dataset)
+data = dataset[0]
+split_edge = dataset.get_edge_split()
+
+if args.save_appendix == '':
+    args.save_appendix = '_' + time.strftime("%Y%m%d%H%M%S")
+if args.data_appendix == '':
+    args.data_appendix = '_h{}_rph{}'.format(
+        args.num_hops, ''.join(str(args.ratio_per_hop).split('.')))
+    if args.max_nodes_per_hop is not None:
+        args.data_appendix += '_mnph{}'.format(args.max_nodes_per_hop)
+
+args.res_dir = os.path.join('results/{}{}'.format(args.dataset, args.save_appendix))
+print('Results will be saved in ' + args.res_dir)
+if not os.path.exists(args.res_dir):
+    os.makedirs(args.res_dir) 
+
+if args.use_valedges_as_input:
+    val_edge_index = split_edge['valid']['edge'].t()
+    val_edge_index = to_undirected(val_edge_index)
+    data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
+    val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
+    data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
+
+path = dataset.root + '_wl{}'.format(args.data_appendix)
+use_coalesce = True
+
+#datalist = ['data_{}_{}.pt'.format(i, "t") for i in range(]
+
+dataset_class = 'WLDynamicDataset' if args.dynamic_train else 'WLDataset'
+train_dataset = eval(dataset_class)(
+    path, 
+    data, 
+    split_edge, 
+    num_hops=args.num_hops, 
+    percent=args.train_percent, 
+    split='train', 
+    use_coalesce=use_coalesce, 
+    node_label=args.node_label, 
+    ratio_per_hop=args.ratio_per_hop, 
+    max_nodes_per_hop=args.max_nodes_per_hop, 
+) 
+
+dataset_class = 'WLDynamicDataset' if args.dynamic_val else 'WLDataset'
+val_dataset = eval(dataset_class)(
+    path, 
+    data, 
+    split_edge, 
+    num_hops=args.num_hops, 
+    percent=args.val_percent, 
+    split='valid', 
+    use_coalesce=use_coalesce, 
+    node_label=args.node_label, 
+    ratio_per_hop=args.ratio_per_hop, 
+    max_nodes_per_hop=args.max_nodes_per_hop, 
+)
+
+dataset_class = 'WLDynamicDataset' if args.dynamic_test else 'WLDataset'
+test_dataset = eval(dataset_class)(
+    path, 
+    data, 
+    split_edge, 
+    num_hops=args.num_hops, 
+    percent=args.test_percent, 
+    split='test', 
+    use_coalesce=use_coalesce, 
+    node_label=args.node_label, 
+    ratio_per_hop=args.ratio_per_hop, 
+    max_nodes_per_hop=args.max_nodes_per_hop, 
+)
+print('Using', torch.cuda.device_count(), 'GPUs!')
+
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+max_z = 1000  # set a large max_z so that every z has embeddings to look up
+
+if args.multi_gpu: train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, 
+                      shuffle=True, num_workers=args.num_workers)
+else: train_loader = DataLoader(train_dataset, batch_size=args.batch_size, 
+                      shuffle=True, num_workers=args.num_workers)
+val_loader = DataLoader(val_dataset, batch_size=args.batch_size, 
+                    num_workers=args.num_workers)
+test_loader = DataLoader(test_dataset, batch_size=args.batch_size, 
+                     num_workers=args.num_workers)
+
+for run in range(args.runs):
+    emb = None
+    model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
+                  max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
+                  node_embedding=emb).to(device)
+
+    wandb.watch(model)
+
+    parameters = list(model.parameters())
+
+    optimizer = torch.optim.Adam(params=parameters, lr=args.lr)
+    total_params = sum(p.numel() for param in parameters for p in param)
+    print(f'Total number of parameters is {total_params}')
+    if args.model == 'DGCNN':
+        print(f'SortPooling k is set to {model.k}')
+    log_file = os.path.join(args.res_dir, 'log.txt')
+    with open(log_file, 'a') as f:
+        print(f'Total number of parameters is {total_params}', file=f)
+        if args.model == 'DGCNN':
+            print(f'SortPooling k is set to {model.k}', file=f)
+
+    start_epoch = 1
+    if args.multi_gpu: model = DataParallel(model)
+    # Training starts
+    for epoch in range(start_epoch, start_epoch + args.epochs):
+        loss = train()
+
+        if epoch % args.eval_steps == 0:
+            results = test()
+
+            if epoch % args.log_steps == 0:
+                model_name = os.path.join(
+                    args.res_dir, 'model_checkpoint{}.pth'.format(epoch))
+                optimizer_name = os.path.join(
+                    args.res_dir, 'optimizer_checkpoint{}.pth'.format(epoch))
+                torch.save(model.state_dict(), model_name)
+                torch.save(optimizer.state_dict(), optimizer_name)
+
+                for key, result in results.items():
+                    valid_res, test_res = result
+
+                    wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized MSE Train Loss": loss,
+                        "Valid_set MSE": valid_res, "Test_set MSE": test_res})
+
+                    print(key)
+                    print(f'Run: {run + 1:02d}, '
+                          f'Epoch: {epoch:02d}, '
+                          f'Loss: {loss:.4f}, '
+                          f'Valid MSE: {valid_res:.2f}%, '
+                          f'Test MSE: {test_res:.2f}%')
+
+print(f'Results are saved in {args.res_dir}')
+
+
+
