@@ -102,7 +102,8 @@ class WLDynamicDataset(Dataset):
         self.node_label = node_label
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
-        super(WLDynamicDataset, self).__init__(root)
+        self.datalist = []
+        self.split = split
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
                                                self.data.edge_index, 
@@ -124,12 +125,17 @@ class WLDynamicDataset(Dataset):
             (edge_weight, (self.data.edge_index[0], self.data.edge_index[1])), 
             shape=(self.data.num_nodes, self.data.num_nodes)
         )
-        
+        super(WLDynamicDataset, self).__init__(root)
+    
+    @property
+    def processed_file_names(self):
+        return self.datalist
+ 
     def __len__(self):
         return len(self.links)
 
     def process(self):
-        for idx in range(len(self.links)):
+        for idx in tqdm(range(len(self.links))):
             src, dst = self.links[idx]
 
             if self.labels[idx]: status = "pos"
@@ -139,10 +145,10 @@ class WLDynamicDataset(Dataset):
                                  self.max_nodes_per_hop, node_features=self.data.x)
             data = construct_pyg_graph(*tmp, self.node_label)
 
-            torch.save(data, osp.join(self.processed_dir, 'data_{}.pt'.format(idx)))
-
+            torch.save(data, osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
+            self.datalist.append('data_{}_{}.pt'.format(idx, self.split))
     def get(self, idx):
-        data = torch.load(osp.join(self.processed_dir, 'data_{}.pt'.format(idx)))
+        data = torch.load(osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
         return data
 
 

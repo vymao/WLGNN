@@ -61,6 +61,21 @@ def main():
         if args.max_nodes_per_hop is not None:
             args.data_appendix += '_mnph{}'.format(args.max_nodes_per_hop)
 
+    args.res_dir = os.path.join('results/{}{}'.format(args.dataset, args.save_appendix))
+    print('Results will be saved in ' + args.res_dir)
+    if not os.path.exists(args.res_dir):
+        os.makedirs(args.res_dir) 
+    #if not args.keep_old:
+    # Backup python files.
+    #    copy('seal_link_pred.py', args.res_dir)
+    #    copy('utils.py', args.res_dir)
+    
+    if args.use_valedges_as_input:
+        val_edge_index = split_edge['valid']['edge'].t()
+        val_edge_index = to_undirected(val_edge_index)
+        data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
+        val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
+        data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
 
     path = dataset.root + '_wl{}'.format(args.data_appendix)
     use_coalesce = True
@@ -119,10 +134,10 @@ def main():
                          num_workers=args.num_workers)
 
     for run in range(args.runs):
-        wandb.watch(model)
         model = WLCNN_model(hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                       max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                       node_embedding=emb).to(device)
+        wandb.watch(model)
 
         parameters = list(model.parameters())
 
