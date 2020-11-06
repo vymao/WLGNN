@@ -27,8 +27,8 @@ from torch.utils.data import DataLoader
 from torch_sparse import coalesce
 from torch_scatter import scatter_min
 import torch_geometric.transforms as T
-from torch_geometric.nn import GCNConv, SAGEConv, global_sort_pool, global_add_pool
-from torch_geometric.data import Data, Dataset, InMemoryDataset, DataLoader
+from torch_geometric.nn import GCNConv, SAGEConv, global_sort_pool, global_add_pool, DataParallel
+from torch_geometric.data import Data, Dataset, InMemoryDataset, DataLoader, DataListLoader
 from torch_geometric.utils import (negative_sampling, add_self_loops,
                                    train_test_split_edges, to_networkx, 
                                    to_scipy_sparse_matrix, to_undirected)
@@ -65,11 +65,7 @@ def main():
     print('Results will be saved in ' + args.res_dir)
     if not os.path.exists(args.res_dir):
         os.makedirs(args.res_dir) 
-    #if not args.keep_old:
-    # Backup python files.
-    #    copy('seal_link_pred.py', args.res_dir)
-    #    copy('utils.py', args.res_dir)
-    
+
     if args.use_valedges_as_input:
         val_edge_index = split_edge['valid']['edge'].t()
         val_edge_index = to_undirected(val_edge_index)
@@ -122,11 +118,13 @@ def main():
         max_nodes_per_hop=args.max_nodes_per_hop, 
     )
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     max_z = 1000  # set a large max_z so that every z has embeddings to look up
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, 
+    if args.multi_gpu: train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, 
+                          shuffle=True, num_workers=args.num_workers)
+    else: train_loader = DataLoader(train_dataset, batch_size=args.batch_size, 
                           shuffle=True, num_workers=args.num_workers)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, 
                         num_workers=args.num_workers)
@@ -134,9 +132,12 @@ def main():
                          num_workers=args.num_workers)
 
     for run in range(args.runs):
+        emb = None
         model = WLCNN_model(hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                       max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                       node_embedding=emb).to(device)
+
+        if args.multi_gpu: model = DataParallel(model)
         wandb.watch(model)
 
         parameters = list(model.parameters())
@@ -185,8 +186,6 @@ def main():
     print(f'Results are saved in {args.res_dir}')
 
 
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Dataset Creation')
 
@@ -209,7 +208,7 @@ def parse_args():
                         help="whether to consider edge weight in GNN")
     # Training settings
     parser.add_argument('--lr', type=float, default=0.0001)
-    parser.add_argument('--epochs', type=int, default=50)
+    parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--runs', type=int, default=1)
     parser.add_argument('--train_percent', type=float, default=100)
     parser.add_argument('--val_percent', type=float, default=100)
@@ -241,6 +240,8 @@ def parse_args():
                         help="test multiple models together")
     parser.add_argument('--use_heuristic', type=str, default=None, 
                         help="test a link prediction heuristic (CN or AA)")
+    parser.add_argument('--multi_gpu', action='store_true', 
+                        help="whether to use multi-gpu parallelism")
     return parser.parse_args()
 
 def train():
@@ -249,14 +250,11 @@ def train():
     total_loss = 0
     pbar = tqdm(train_loader)
     for data in pbar:
-        data = data.to(device)
         optimizer.zero_grad()
-        x = data.x if args.use_feature else None
-        edge_weight = data.edge_weight 
-        node_id = data.node_id if emb else None
-        out = model(data.z, data.z1, data.z2, data.w, data.edge_index, data.batch, x, edge_weight, node_id)
-        out = torch.round(out)
-        loss = MSELoss()(out.view(-1), data.y.to(torch.float))
+        out = model(data, args)
+        y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
+
+        loss = MSELoss()(out.view(-1), y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * data.num_graphs
