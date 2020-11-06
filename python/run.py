@@ -43,7 +43,72 @@ warnings.simplefilter('ignore',SparseEfficiencyWarning)
 from DataSet import *
 from WLGNN import *
 
+def evaluate_auc(val_pred, val_true, test_pred, test_true):
+    valid_auc = roc_auc_score(val_true, val_pred)
+    test_auc = roc_auc_score(test_true, test_pred)
+    results = {}
+    results['AUC'] = (valid_auc, test_auc)
 
+    return results
+
+def train():
+    model.train()
+
+    total_loss = 0
+    pbar = tqdm(train_loader)
+    for data in pbar:
+        optimizer.zero_grad()
+        out = model(data, args)
+        y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
+
+        loss = MSELoss()(out.view(-1), y)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item() * data.num_graphs
+
+    return total_loss / len(train_dataset)
+
+
+@torch.no_grad()
+def test():
+    model.eval()
+
+    y_pred, y_true = [], []
+    for data in tqdm(val_loader):
+        data = data.to(device)
+        x = data.x if args.use_feature else None
+        edge_weight = data.edge_weight if args.use_edge_weight else None
+        node_id = data.node_id if emb else None
+        out = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        out = torch.round(out)
+        y_pred.append(out.view(-1).cpu())
+        y_true.append(data.y.view(-1).cpu().to(torch.float))
+    val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
+    #pos_val_pred = val_pred[val_true==1]
+    #neg_val_pred = val_pred[val_true==0]
+
+    y_pred, y_true = [], []
+    for data in tqdm(test_loader):
+        data = data.to(device)
+        x = data.x if args.use_feature else None
+        edge_weight = data.edge_weight if args.use_edge_weight else None
+        node_id = data.node_id if emb else None
+        logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        y_pred.append(logits.view(-1).cpu())
+        y_true.append(data.y.view(-1).cpu().to(torch.float))
+    test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
+    #pos_test_pred = test_pred[test_true==1]
+    #neg_test_pred = test_pred[test_true==0]
+
+    #if args.eval_metric == 'hits':
+    #    results = evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
+    #elif args.eval_metric == 'mrr':
+    #    results = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
+    #elif args.eval_metric == 'auc':
+    #    results = evaluate_auc(val_pred, val_true, test_pred, test_true)
+    results = {}
+    results['MSE'] = (mean_squared_error(val_true, val_pred), mean_squared_error(test_true, test_pred))
+    return results
 
 def main(): 
     args = parse_args()
@@ -75,6 +140,8 @@ def main():
 
     path = dataset.root + '_wl{}'.format(args.data_appendix)
     use_coalesce = True
+
+    #datalist = ['data_{}_{}.pt'.format(i, "t") for i in range(]
 
     dataset_class = 'WLDynamicDataset' if args.dynamic_train else 'WLDataset'
     train_dataset = eval(dataset_class)(
@@ -117,6 +184,7 @@ def main():
         ratio_per_hop=args.ratio_per_hop, 
         max_nodes_per_hop=args.max_nodes_per_hop, 
     )
+    print('Using', torch.cuda.device_count(), 'GPUs!')
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -133,11 +201,10 @@ def main():
 
     for run in range(args.runs):
         emb = None
-        model = WLCNN_model(hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
+        model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                       max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                       node_embedding=emb).to(device)
 
-        if args.multi_gpu: model = DataParallel(model)
         wandb.watch(model)
 
         parameters = list(model.parameters())
@@ -154,7 +221,7 @@ def main():
                 print(f'SortPooling k is set to {model.k}', file=f)
 
         start_epoch = 1
-        
+        if args.multi_gpu: model = DataParallel(model)
         # Training starts
         for epoch in range(start_epoch, start_epoch + args.epochs):
             loss = train()
@@ -243,73 +310,6 @@ def parse_args():
     parser.add_argument('--multi_gpu', action='store_true', 
                         help="whether to use multi-gpu parallelism")
     return parser.parse_args()
-
-def train():
-    model.train()
-
-    total_loss = 0
-    pbar = tqdm(train_loader)
-    for data in pbar:
-        optimizer.zero_grad()
-        out = model(data, args)
-        y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
-
-        loss = MSELoss()(out.view(-1), y)
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item() * data.num_graphs
-
-    return total_loss / len(train_dataset)
-
-@torch.no_grad()
-def test():
-    model.eval()
-
-    y_pred, y_true = [], []
-    for data in tqdm(val_loader):
-        data = data.to(device)
-        x = data.x if args.use_feature else None
-        edge_weight = data.edge_weight if args.use_edge_weight else None
-        node_id = data.node_id if emb else None
-        out = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
-        out = torch.round(out)
-        y_pred.append(out.view(-1).cpu())
-        y_true.append(data.y.view(-1).cpu().to(torch.float))
-    val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
-    #pos_val_pred = val_pred[val_true==1]
-    #neg_val_pred = val_pred[val_true==0]
-
-    y_pred, y_true = [], []
-    for data in tqdm(test_loader):
-        data = data.to(device)
-        x = data.x if args.use_feature else None
-        edge_weight = data.edge_weight if args.use_edge_weight else None
-        node_id = data.node_id if emb else None
-        logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
-        y_pred.append(logits.view(-1).cpu())
-        y_true.append(data.y.view(-1).cpu().to(torch.float))
-    test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
-    #pos_test_pred = test_pred[test_true==1]
-    #neg_test_pred = test_pred[test_true==0]
-    
-    #if args.eval_metric == 'hits':
-    #    results = evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    #elif args.eval_metric == 'mrr':
-    #    results = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    #elif args.eval_metric == 'auc':
-    #    results = evaluate_auc(val_pred, val_true, test_pred, test_true)
-    results = {}
-    results['MSE'] = (mean_squared_error(val_true, val_pred), mean_squared_error(test_true, test_pred))
-    return results
-
-def evaluate_auc(val_pred, val_true, test_pred, test_true):
-    valid_auc = roc_auc_score(val_true, val_pred)
-    test_auc = roc_auc_score(test_true, test_pred)
-    results = {}
-    results['AUC'] = (valid_auc, test_auc)
-
-    return results
-        
 
 if __name__ == "__main__":
     main()

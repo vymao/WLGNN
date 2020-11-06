@@ -26,6 +26,8 @@ from torch_geometric.data import Data, Dataset, InMemoryDataset, DataLoader
 from torch_geometric.utils import (negative_sampling, add_self_loops,
                                    train_test_split_edges, to_networkx, 
                                    to_scipy_sparse_matrix, to_undirected)
+import glob
+from torch_geometric.data.makedirs import makedirs
 
 import warnings
 from scipy.sparse import SparseEfficiencyWarning
@@ -34,7 +36,7 @@ warnings.simplefilter('ignore',SparseEfficiencyWarning)
 from enclosing_subgraph import *
 
 class WLDataset(InMemoryDataset):
-    def __init__(self, root, data, split_edge, num_hops, percent=100, split='train', 
+    def __init__(self, root, data, split_edge, num_hops,percent=100, split='train', 
                  use_coalesce=False, node_label='drnl', ratio_per_hop=1.0, 
                  max_nodes_per_hop=None):
         self.data = data
@@ -91,7 +93,7 @@ class WLDataset(InMemoryDataset):
 
 
 class WLDynamicDataset(Dataset):
-    def __init__(self, root, data, split_edge, num_hops, percent=100, split='train', 
+    def __init__(self, root, data, split_edge, num_hops, percent=100, split='train',
                  use_coalesce=False, node_label='drnl', ratio_per_hop=1.0, 
                  max_nodes_per_hop=None, **kwargs):
         self.data = data
@@ -102,7 +104,8 @@ class WLDynamicDataset(Dataset):
         self.node_label = node_label
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
-        self.datalist = []
+        processed_dir = osp.join(root, "processed")
+        self.datalist = [osp.basename(i) for i in glob.glob(osp.join(processed_dir, '*.pt'))]
         self.split = split
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
@@ -133,8 +136,11 @@ class WLDynamicDataset(Dataset):
  
     def __len__(self):
         return len(self.links)
-
-    def process(self):
+    def _process(self):
+        makedirs(self.processed_dir)
+        if len(glob.glob(osp.join(self.processed_dir, '*.pt'))) > 0:
+            return
+        #def process(self):
         for idx in tqdm(range(len(self.links))):
             src, dst = self.links[idx]
 
