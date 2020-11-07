@@ -116,11 +116,11 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
             node_id=node_ids, num_nodes=num_nodes)
     else: o_data = None
 
-    L_node_features, L_edges,  L_num_nodes, w, z1, z2 = construct_line_graph(node_ids, adj, z, node_features)
+    L_node_features, L_edges,  L_num_nodes, w, z1, z2, L_node_ids = construct_line_graph(node_ids, adj, z, node_features)
     edge_weight = torch.ones(len(L_edges))
     #print(L_edges)
     data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
-        z2=torch.LongTensor(z2), node_id=node_ids, num_nodes=num_nodes, o_data=o_data)
+        z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=num_nodes, o_data=o_data)
     return data
 
 def construct_line_graph(node_ids, A, z, node_features, subsample=1): 
@@ -154,8 +154,10 @@ def construct_line_graph(node_ids, A, z, node_features, subsample=1):
     w, z1, z2 = [], [], []
 
     index = {}
+    node_ids = []
     value = 0
-    for node in L_node_ids: 
+    for node in L_node_ids:
+        node_ids.append(value) 
         L_node_features.append(info[node])
         w.append(weight)
         z1.append(z[node[0]])
@@ -169,7 +171,7 @@ def construct_line_graph(node_ids, A, z, node_features, subsample=1):
         n1, n2 = index[v1], index[v2]
         edge_list.append([n1, n2])
 
-    return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, w, z1, z2
+    return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, w, z1, z2, torch.LongTensor(node_ids)
 
  
 def extract_enclosing_subgraphs(link_index, A, x, status, num_hops, node_label='drnl', 

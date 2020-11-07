@@ -58,7 +58,9 @@ def train():
     pbar = tqdm(train_loader)
     for data in pbar:
         optimizer.zero_grad()
-        out = model(data, args)
+        #print(data)
+        #print(args)
+        out = model(data)
         y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
 
         loss = MSELoss()(out.view(-1), y)
@@ -79,7 +81,7 @@ def test():
         x = data.x if args.use_feature else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
-        out = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        out = model(data)
         out = torch.round(out)
         y_pred.append(out.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
@@ -93,7 +95,7 @@ def test():
         x = data.x if args.use_feature else None
         edge_weight = data.edge_weight if args.use_edge_weight else None
         node_id = data.node_id if emb else None
-        logits = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        logits = model(data)
         y_pred.append(logits.view(-1).cpu())
         y_true.append(data.y.view(-1).cpu().to(torch.float))
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)

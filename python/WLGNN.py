@@ -41,6 +41,7 @@ class WLGNN_model(torch.nn.Module):
 
         self.use_feature = use_feature
         self.node_embedding = node_embedding
+        self.args = args
 
         if k <= 1:  # Transform percentile to number.
             if args.dynamic_train:
@@ -60,10 +61,10 @@ class WLGNN_model(torch.nn.Module):
         self.convs = ModuleList()
         initial_channels = hidden_channels * 3
         if self.use_feature:
-            initial_channels += dataset.num_features
+            initial_channels += dataset.num_features * 2
         if self.node_embedding is not None:
             initial_channels += node_embedding.embedding_dim
-
+        #print(initial_channels)
         self.convs.append(GNN(initial_channels, hidden_channels))
         for i in range(0, num_layers-1):
             self.convs.append(GNN(hidden_channels, hidden_channels))
@@ -82,10 +83,11 @@ class WLGNN_model(torch.nn.Module):
         self.lin1 = Linear(dense_dim, 128)
         self.lin2 = Linear(128, 1)
 
-    def forward(self, data, args):
-        x = data.x if args.use_feature else None
-        z, z1, z2, w, edge_index, batch, x, edge_weight, node_id = data.z, data.z1, data.z2, data.w, data.edge_index, data.batch, x, data.edge_weight, None
-
+    def forward(self, data):
+        x = data.x if self.args.use_feature else None
+        z1, z2, w, edge_index, batch, x, edge_weight, node_id = data.z1, data.z2, data.w, data.edge_index, data.batch, x, data.edge_weight, None
+        print("data'")
+        print(data)
         z1_emb = self.z1_embedding(z1)
         z2_emb = self.z2_embedding(z2)
         w_emb = self.w_embedding(w)
@@ -101,11 +103,14 @@ class WLGNN_model(torch.nn.Module):
             n_emb = self.node_embedding(node_id)
             x = torch.cat([x, n_emb], 1)
         xs = [x]
-
+        #print(x.size())
         for conv in self.convs:
             xs += [torch.tanh(conv(xs[-1], edge_index, edge_weight))]
         x = torch.cat(xs[1:], dim=-1)
-
+        #print("x")
+        #print(x.size())
+        #print("batch")
+        #print(batch.size())
         # Global pooling.
         x = global_sort_pool(x, batch, self.k)
         x = x.unsqueeze(1)  # [num_graphs, 1, k * hidden]

@@ -105,7 +105,7 @@ class WLDynamicDataset(Dataset):
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
         processed_dir = osp.join(root, "processed")
-        self.datalist = [osp.basename(i) for i in glob.glob(osp.join(processed_dir, '*.pt'))]
+        #print(self.datalist)
         self.split = split
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
@@ -114,6 +114,7 @@ class WLDynamicDataset(Dataset):
                                                self.percent)
         self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
         self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
+        self.datalist = ['data_{}_{}.pt'.format(i, self.split) for i in range(len(self.links))]
         
         if self.use_coalesce:  # compress mutli-edge into edge with weight
             self.data.edge_index, self.data.edge_weight = coalesce(
@@ -137,7 +138,9 @@ class WLDynamicDataset(Dataset):
     def __len__(self):
         return len(self.links)
     def _process(self):
+        #print("here")
         makedirs(self.processed_dir)
+        #print("done")
         if len(glob.glob(osp.join(self.processed_dir, '*.pt'))) > 0:
             return
         #def process(self):
