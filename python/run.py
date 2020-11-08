@@ -83,11 +83,17 @@ def test():
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
         out = model(data)
-        out = torch.round(out)
+        out = torch.round(out).view(-1).cpu()
         y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
 
-        y_pred.append(out.view(-1).cpu())
+        if args.pos_edge_test_only: 
+            y_status = y != 0
+            y = y[y_status]
+            out = out[y_status]
+
+        y_pred.append(out)
         y_true.append(y)
+
     val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
     #pos_val_pred = val_pred[val_true==1]
     #neg_val_pred = val_pred[val_true==0]
@@ -99,21 +105,20 @@ def test():
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
         out = model(data)
-        out = torch.round(out)
+        out = torch.round(out).view(-1).cpu()
         y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
 
-        y_pred.append(out.view(-1).cpu())
+        if args.pos_edge_test_only: 
+            y_status = y != 0
+            y = y[y_status]
+            out = out[y_status]
+
+        y_pred.append(out)
         y_true.append(y)
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
     #pos_test_pred = test_pred[test_true==1]
     #neg_test_pred = test_pred[test_true==0]
 
-    #if args.eval_metric == 'hits':
-    #    results = evaluate_hits(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    #elif args.eval_metric == 'mrr':
-    #    results = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
-    #elif args.eval_metric == 'auc':
-    #    results = evaluate_auc(val_pred, val_true, test_pred, test_true)
     results = {}
     results['MSE'] = (mean_squared_error(val_true, val_pred), mean_squared_error(test_true, test_pred))
     return results
@@ -175,6 +180,8 @@ def parse_args():
                         help="test a link prediction heuristic (CN or AA)")
     parser.add_argument('--multi_gpu', action='store_true', 
                         help="whether to use multi-gpu parallelism")
+    parser.add_arguemtn('--pos_edge_test_only', action='store_true', 
+                        help='whether to only test against positive edge weights or all edges')
     return parser.parse_args()
 
 
