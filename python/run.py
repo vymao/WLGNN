@@ -20,7 +20,7 @@ from sklearn.metrics import mean_squared_error
 import scipy.sparse as ssp
 import torch
 import torch.nn.functional as F
-from torch.nn import BCEWithLogitsLoss
+from torch.nn import BCEWithLogitsLoss, MSELoss
 from torch.nn import ModuleList, Linear, Conv1d, MaxPool1d, Embedding
 from torch.utils.data import DataLoader
 
@@ -57,6 +57,7 @@ def train():
     total_loss = 0
     pbar = tqdm(train_loader)
     for data in pbar:
+        if not args.multi_gpu: data = data.to(device)
         optimizer.zero_grad()
         #print(data)
         #print(args)
@@ -66,7 +67,7 @@ def train():
         loss = MSELoss()(out.view(-1), y)
         loss.backward()
         optimizer.step()
-        total_loss += loss.item() * data.num_graphs
+        total_loss += loss.item() * len(data)
 
     return total_loss / len(train_dataset)
 
@@ -77,27 +78,32 @@ def test():
 
     y_pred, y_true = [], []
     for data in tqdm(val_loader):
-        data = data.to(device)
-        x = data.x if args.use_feature else None
-        edge_weight = data.edge_weight if args.use_edge_weight else None
-        node_id = data.node_id if emb else None
+        if not args.multi_gpu: data = data.to(device)
+        #x = data.x if args.use_feature else None
+        #edge_weight = data.edge_weight if args.use_edge_weight else None
+        #node_id = data.node_id if emb else None
         out = model(data)
         out = torch.round(out)
+        y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
+
         y_pred.append(out.view(-1).cpu())
-        y_true.append(data.y.view(-1).cpu().to(torch.float))
+        y_true.append(y)
     val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
     #pos_val_pred = val_pred[val_true==1]
     #neg_val_pred = val_pred[val_true==0]
 
     y_pred, y_true = [], []
     for data in tqdm(test_loader):
-        data = data.to(device)
-        x = data.x if args.use_feature else None
-        edge_weight = data.edge_weight if args.use_edge_weight else None
-        node_id = data.node_id if emb else None
-        logits = model(data)
-        y_pred.append(logits.view(-1).cpu())
-        y_true.append(data.y.view(-1).cpu().to(torch.float))
+        if not args.multi_gpu: data = data.to(device)
+        #x = data.x if args.use_feature else None
+        #edge_weight = data.edge_weight if args.use_edge_weight else None
+        #node_id = data.node_id if emb else None
+        out = model(data)
+        out = torch.round(out)
+        y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
+
+        y_pred.append(out.view(-1).cpu())
+        y_true.append(y)
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
     #pos_test_pred = test_pred[test_true==1]
     #neg_test_pred = test_pred[test_true==0]
@@ -249,7 +255,8 @@ test_dataset = eval(dataset_class)(
 )
 print('Using', torch.cuda.device_count(), 'GPUs!')
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+if args.multi_gpu: device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+else: device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 max_z = 1000  # set a large max_z so that every z has embeddings to look up
 
@@ -257,16 +264,22 @@ if args.multi_gpu: train_loader = DataListLoader(train_dataset, batch_size=args.
                       shuffle=True, num_workers=args.num_workers)
 else: train_loader = DataLoader(train_dataset, batch_size=args.batch_size, 
                       shuffle=True, num_workers=args.num_workers)
-val_loader = DataLoader(val_dataset, batch_size=args.batch_size, 
+
+if args.multi_gpu: val_loader = DataListLoader(val_dataset, batch_size=args.batch_size, 
                     num_workers=args.num_workers)
-test_loader = DataLoader(test_dataset, batch_size=args.batch_size, 
+else: val_loader = DataLoader(val_dataset, batch_size=args.batch_size,
+                    num_workers=args.num_workers)
+ 
+if args.multi_gpu: test_loader = DataListLoader(test_dataset, batch_size=args.batch_size, 
+                     num_workers=args.num_workers)
+else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
                      num_workers=args.num_workers)
 
 for run in range(args.runs):
     emb = None
     model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                   max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
-                  node_embedding=emb).to(device)
+                  node_embedding=emb)
 
     wandb.watch(model)
 
@@ -285,7 +298,18 @@ for run in range(args.runs):
 
     start_epoch = 1
     if args.multi_gpu: model = DataParallel(model)
+    model = model.to(device)
     # Training starts
+    if args.only_test:
+        results = test()
+        for key, result in results.items():
+            valid_res, test_res = result
+            print(key)
+            print(f'Run: {run + 1:02d}, '
+                  f'Valid: {100 * valid_res:.2f}%, '
+                  f'Test: {100 * test_res:.2f}%')
+        exit()
+   
     for epoch in range(start_epoch, start_epoch + args.epochs):
         loss = train()
 

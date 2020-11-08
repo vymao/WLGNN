@@ -136,7 +136,7 @@ class WLDynamicDataset(Dataset):
         return self.datalist
  
     def __len__(self):
-        return len(self.links)
+        return len(self.datalist)
     def _process(self):
         #print("here")
         makedirs(self.processed_dir)
@@ -155,7 +155,7 @@ class WLDynamicDataset(Dataset):
             data = construct_pyg_graph(*tmp, self.node_label)
 
             torch.save(data, osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
-            self.datalist.append('data_{}_{}.pt'.format(idx, self.split))
+            #self.datalist.append('data_{}_{}.pt'.format(idx, self.split))
     def get(self, idx):
         data = torch.load(osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
         return data

@@ -120,7 +120,7 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
     edge_weight = torch.ones(len(L_edges))
     #print(L_edges)
     data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
-        z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=num_nodes, o_data=o_data)
+        z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=len(L_node_ids), o_data=o_data)
     return data
 
 def construct_line_graph(node_ids, A, z, node_features, subsample=1): 
