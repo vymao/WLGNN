@@ -61,10 +61,25 @@ def train():
         optimizer.zero_grad()
         #print(data)
         #print(args)
-        out = model(data)
+        out = model(data).view(-1)
         y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
+         
+        if args.neg_edge_percent != 100:
+            y_neg = y[y == 0]
+            out_neg = out[y == 0]
+            y_pos = y[y != 0]
+            out_pos = out[y != 0]
+            
+            num_neg = int(args.neg_edge_percent / 100 * len(out_neg))
+            out_neg, y_neg  = out_neg[:num_neg], y[:num_neg]
+            
+            y = torch.cat([y_pos, y_neg])
+            out = torch.cat([out_pos, out_neg])
+            
+            
 
-        loss = MSELoss()(out.view(-1), y)
+
+        loss = MSELoss()(out, y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * len(data)
@@ -160,6 +175,8 @@ def parse_args():
                         help="also train free-parameter node embeddings together with GNN")
     parser.add_argument('--pretrained_node_embedding', type=str, default=None, 
                         help="load pretrained node embeddings as additional node features")
+    parser.add_argument('--neg_edge_percent', type=float, default=100)
+  
     # Testing settings
     parser.add_argument('--use_valedges_as_input', action='store_true')
     parser.add_argument('--eval_steps', type=int, default=1)
@@ -180,7 +197,7 @@ def parse_args():
                         help="test a link prediction heuristic (CN or AA)")
     parser.add_argument('--multi_gpu', action='store_true', 
                         help="whether to use multi-gpu parallelism")
-    parser.add_arguemtn('--pos_edge_test_only', action='store_true', 
+    parser.add_argument('--pos_edge_test_only', action='store_true', 
                         help='whether to only test against positive edge weights or all edges')
     return parser.parse_args()
 

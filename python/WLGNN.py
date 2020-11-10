@@ -86,7 +86,14 @@ class WLGNN_model(torch.nn.Module):
     def forward(self, data):
         x = data.x if self.args.use_feature else None
         z1, z2, w, edge_index, batch, x, edge_weight, node_id = data.z1, data.z2, data.w, data.edge_index, data.batch, x, data.edge_weight, None
-
+        if (edge_index.size()[0] != 2): 
+            print(data)
+            print(data.x)
+            print(data.y)
+            print(data.w)
+            print(data.z1)
+            print(data.z2)
+            print(data.node_id)
         z1_emb = self.z1_embedding(z1)
         z2_emb = self.z2_embedding(z2)
         w_emb = self.w_embedding(w)

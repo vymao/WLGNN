@@ -138,12 +138,17 @@ class WLDynamicDataset(Dataset):
     def __len__(self):
         return len(self.datalist)
     def _process(self):
-        #print("here")
         makedirs(self.processed_dir)
-        #print("done")
-        if len(glob.glob(osp.join(self.processed_dir, '*.pt'))) > 0:
+        if self.split == 'train' and len(glob.glob(osp.join(self.processed_dir, '*train.pt'))) > 0:
             return
-        #def process(self):
+        if self.split == 'test' and len(glob.glob(osp.join(self.processed_dir, '*test.pt'))) > 0:
+            return
+        if self.split == 'valid' and len(glob.glob(osp.join(self.processed_dir, '*valid.pt'))) > 0:
+            return
+
+        self.process()
+
+    def process(self):
         for idx in tqdm(range(len(self.links))):
             src, dst = self.links[idx]
 
