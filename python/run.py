@@ -62,7 +62,21 @@ def train():
         #print(data)
         #print(args)
         out = model(data).view(-1)
-        y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
+        if args.multi_gpu: y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
+        else: y = data.y.to(torch.float)
+
+        if len(y) != len(out): 
+            print(torch.unique(data.batch))
+            print(data.x)
+            print(data.y)
+            print(data.w)
+            print(data.z1)
+            print(data.z2)
+            print(data.node_id)
+            print(len(y))
+            print(len(out))
+            print(y)
+            print(out)
          
         if args.neg_edge_percent != 100:
             y_neg = y[y == 0]
@@ -71,13 +85,11 @@ def train():
             out_pos = out[y != 0]
             
             num_neg = int(args.neg_edge_percent / 100 * len(out_neg))
-            out_neg, y_neg  = out_neg[:num_neg], y[:num_neg]
+            out_neg, y_neg  = out_neg[:num_neg], y_neg[:num_neg]
             
             y = torch.cat([y_pos, y_neg])
             out = torch.cat([out_pos, out_neg])
             
-            
-
 
         loss = MSELoss()(out, y)
         loss.backward()
@@ -98,8 +110,23 @@ def test():
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
         out = model(data)
-        out = torch.round(out).view(-1).cpu()
-        y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
+        out = torch.round(out.view(-1)).cpu()
+        
+        if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
+        else: y = data.y.view(-1).cpu().to(torch.float)
+        
+        if len(y) != len(out): 
+            print(torch.unique(data.batch))
+            print(data.x)
+            print(data.y)
+            print(data.w)
+            print(data.z1)
+            print(data.z2)
+            print(data.node_id)
+            print(len(y))
+            print(len(out))
+            print(y)
+            print(out)
 
         if args.pos_edge_test_only: 
             y_status = y != 0
@@ -121,7 +148,22 @@ def test():
         #node_id = data.node_id if emb else None
         out = model(data)
         out = torch.round(out).view(-1).cpu()
-        y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
+
+        if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
+        else: y = data.y.view(-1).cpu().to(torch.float)
+
+        if len(y) != len(out): 
+            print(torch.unique(data.batch))
+            print(data.x)
+            print(data.y)
+            print(data.w)
+            print(data.z1)
+            print(data.z2)
+            print(data.node_id)
+            print(len(y))
+            print(len(out))
+            print(y)
+            print(out)
 
         if args.pos_edge_test_only: 
             y_status = y != 0
