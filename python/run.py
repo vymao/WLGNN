@@ -39,7 +39,7 @@ import warnings
 from scipy.sparse import SparseEfficiencyWarning
 warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
-
+import gc
 from DataSet import *
 from WLGNN import *
 
@@ -402,7 +402,7 @@ for run in range(args.runs):
                           f'Loss: {loss:.4f}, '
                           f'Valid MSE: {valid_res:.2f}%, '
                           f'Test MSE: {test_res:.2f}%')
-
+        gc.collect()
 print(f'Results are saved in {args.res_dir}')
 
 

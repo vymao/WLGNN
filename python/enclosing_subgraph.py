@@ -52,8 +52,8 @@ def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0,
     subgraph = A[nodes, :][:, nodes]
 
     # Remove target link between the subgraph.
-    subgraph[0, 1] = 0
-    subgraph[1, 0] = 0
+    subgraph[0, 1] = 1
+    subgraph[1, 0] = 1
 
     if node_features is not None:
         node_features = node_features[nodes]
@@ -135,13 +135,20 @@ def construct_line_graph(node_ids, A, z, node_features, subsample=1):
     A_edges = list(zip(rows,cols))
     #print(A_edges)
 
+    weights = {}
     for edge in A_edges: 
         src, end = edge[0], edge[1]
         src_z, end_z = z[src], z[end]
         weight = A[src,end]
+        weights[(src, end)] = weight
         f1, f2 = node_features[src], node_features[end]
         info[(src, end)] = f1 + f2
         
+    A[0, 1] = 0
+    A[1, 0] = 0  
+    rows, cols = A.nonzero()
+    A_edges = list(zip(rows,cols))
+
     G.add_edges_from(A_edges)
     L = nx.line_graph(G)
     num_nodes = L.number_of_nodes()
@@ -159,17 +166,23 @@ def construct_line_graph(node_ids, A, z, node_features, subsample=1):
     for node in L_node_ids:
         node_ids.append(value) 
         L_node_features.append(info[node])
-        w.append(weight)
+        w.append(weights[node])
         z1.append(z[node[0]])
         z2.append(z[node[1]])
         index[node] = value
         value += 1
+    node_ids.append(value + 1)
+    L_node_features.append(info[(0, 1)])
+    w.append(0)
+    z1.append(z[0])
+    z2.append(z[1])
 
     edge_list = []
     for edge in L_edges: 
         v1, v2 = edge[0], edge[1]
         n1, n2 = index[v1], index[v2]
         edge_list.append([n1, n2])
+        edge_list.append([n2, n1])
 
     return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, w, z1, z2, torch.LongTensor(node_ids)
 
