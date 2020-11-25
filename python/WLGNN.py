@@ -11,18 +11,16 @@ from tqdm import tqdm
 import pdb
 
 import numpy as np
-from sklearn.metrics import roc_auc_score
 import scipy.sparse as ssp
 import torch
 import torch.nn.functional as F
-from torch.nn import BCEWithLogitsLoss
 from torch.nn import ModuleList, Linear, Conv1d, MaxPool1d, Embedding
 from torch.utils.data import DataLoader
 
 from torch_sparse import coalesce
 from torch_scatter import scatter_min
 import torch_geometric.transforms as T
-from torch_geometric.nn import GCNConv, SAGEConv, global_sort_pool, global_add_pool
+from torch_geometric.nn import GCNConv, GATConv, global_sort_pool, global_add_pool
 from torch_geometric.data import Data, Dataset, InMemoryDataset, DataLoader
 from torch_geometric.utils import (negative_sampling, add_self_loops,
                                    train_test_split_edges, to_networkx, 
@@ -35,7 +33,7 @@ warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
 # An end-to-end deep learning architecture for graph classification, AAAI-18.
 class WLGNN_model(torch.nn.Module):
-    def __init__(self, args, train_dataset, dataset, hidden_channels, num_layers, max_z, GNN=GCNConv, k=0.6, 
+    def __init__(self, args, train_dataset, dataset, hidden_channels, num_layers, max_z, GNN=GATConv, k=0.6, 
                  use_feature=False, node_embedding=None):
         super(WLGNN_model, self).__init__()
 
@@ -64,14 +62,13 @@ class WLGNN_model(torch.nn.Module):
             initial_channels += dataset.num_features * 2
         if self.node_embedding is not None:
             initial_channels += node_embedding.embedding_dim
-
-        self.convs.append(GNN(initial_channels, hidden_channels))
-        for i in range(0, num_layers-1):
-            self.convs.append(GNN(hidden_channels, hidden_channels))
-        self.convs.append(GNN(hidden_channels, 1))
+        
+        num_heads = 3
+        self.convs.append(GNN(initial_channels, hidden_channels, num_heads))
+        self.convs.append(GNN(hidden_channels * num_heads, 1))
 
         conv1d_channels = [16, 32]
-        total_latent_dim = hidden_channels * num_layers + 1
+        total_latent_dim = hidden_channels * num_heads + 1
         conv1d_kws = [total_latent_dim, 5]
         self.conv1 = Conv1d(1, conv1d_channels[0], conv1d_kws[0],
                             conv1d_kws[0])
@@ -86,14 +83,7 @@ class WLGNN_model(torch.nn.Module):
     def forward(self, data):
         x = data.x if self.args.use_feature else None
         z1, z2, w, edge_index, batch, x, edge_weight, node_id = data.z1, data.z2, data.w, data.edge_index, data.batch, x, data.edge_weight, None
-        if (edge_index.size()[0] != 2): 
-            print(data)
-            print(data.x)
-            print(data.y)
-            print(data.w)
-            print(data.z1)
-            print(data.z2)
-            print(data.node_id)
+        
         z1_emb = self.z1_embedding(z1)
         z2_emb = self.z2_embedding(z2)
         w_emb = self.w_embedding(w)
@@ -111,7 +101,7 @@ class WLGNN_model(torch.nn.Module):
         xs = [x]
 
         for conv in self.convs:
-            xs += [torch.tanh(conv(xs[-1], edge_index, edge_weight))]
+            xs += [torch.tanh(conv(xs[-1], edge_index))]
         x = torch.cat(xs[1:], dim=-1)
 
         # Global pooling.
