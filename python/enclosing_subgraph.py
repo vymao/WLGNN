@@ -94,36 +94,99 @@ def drnl_node_labeling(adj, src, dst):
     return z.to(torch.long)
 
 
-def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl', use_orig_A=False):
+def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl', use_orig_A=False, directed=False):
     # Construct a pytorch_geometric graph from a scipy csr adjacency matrix.
-    u, v, r = ssp.find(adj)
+    #u, v, r = ssp.find(adj)
     num_nodes = adj.shape[0]
     
     node_ids = torch.LongTensor(node_ids)
-    u, v = torch.LongTensor(u), torch.LongTensor(v)
+    #u, v = torch.LongTensor(u), torch.LongTensor(v)
 
     #r = torch.LongTensor(r)
     #edge_index = torch.stack([u, v], 0)
     #edge_weight = r.to(torch.float)
 
     y = torch.tensor([y])
-    if node_label == 'drnl':
-        z = drnl_node_labeling(adj, 0, 1)
-    elif node_label == 'hop':
-        z = torch.tensor(dists)
+    if not directed: 
+        if node_label == 'drnl':
+            z = drnl_node_labeling(adj, 0, 1)
+        elif node_label == 'hop':
+            z = torch.tensor(dists)
 
-    if use_orig_A: o_data = Data(node_features, edge_index, edge_weight=edge_weight, y=y, z=z, 
-            node_id=node_ids, num_nodes=num_nodes)
-    else: o_data = None
+        if use_orig_A: o_data = Data(node_features, edge_index, edge_weight=edge_weight, y=y, z=z, 
+                node_id=node_ids, num_nodes=num_nodes)
+        else: o_data = None
 
-    L_node_features, L_edges,  L_num_nodes, w, z1, z2, L_node_ids = construct_line_graph(node_ids, adj, z, node_features)
-    edge_weight = torch.ones(len(L_edges))
-    #print(L_edges)
-    data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
-        z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=len(L_node_ids), o_data=o_data)
-    return data
+        L_node_features, L_edges,  L_num_nodes, w, z1, z2, L_node_ids = construct_line_graph_undirected(node_ids, adj, z, node_features)
+        edge_weight = torch.ones(len(L_edges))
+        #print(L_edges)
+        data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
+            z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=len(L_node_ids), o_data=o_data)
+        return data
+    else: 
+        L_node_features, L_edges,  L_num_nodes, L_node_ids = construct_line_graph_directed(node_ids, adj, node_features)
+        
+        return L_node_features, L_edges,  L_num_nodes, L_node_ids
 
-def construct_line_graph(node_ids, A, z, node_features, subsample=1): 
+
+def construct_line_graph_directed(node_ids, A, node_features):
+    u, v, r = ssp.find(adj)
+    node_ids = node_ids.tolist()
+    node_features = node_features.tolist()
+
+    G = nx.Graph()
+    G.add_nodes_from(node_ids)
+    rows, cols = A.nonzero()
+    A_edges_forward = list(zip(u, v))  
+    A_edges_reverse = list(zip(v, u))
+
+    info = {}
+    for edge in A_edges_forward: 
+        src, end = edge[0], edge[1]
+        weight = A[src,end]
+        edge_label = [0] * 52
+        edge_label[weight] = 1
+
+        f1, f2 = node_features[src], node_features[end]
+        info[(src, end)] = edge_label + f1 + f2
+
+    for edge in A_edges_reverse: 
+        src, end = edge[0], edge[1]
+        weight = A[src,end]
+        edge_label = [0] * 52
+        edge_label[weight] = 1
+
+        f1, f2 = node_features[src], node_features[end]
+        info[(src, end)] = edge_label + f1 + f2
+
+    G.add_edges_from(A_edges_forward)
+    G.add_edges_from(A_edges_reverse)
+    L = nx.line_graph(G)
+    num_nodes = L.number_of_nodes()
+       
+    L_node_ids = list(L.nodes)
+    L_edges = list(L.edges)
+
+    L_node_features = []
+
+    index = {}
+    node_ids = []
+    value = 0
+    for node in L_node_ids:
+        node_ids.append(value) 
+        L_node_features.append(info[node])
+        index[node] = value
+        value += 1
+
+    edge_list = []
+    for edge in L_edges: 
+        v1, v2 = edge[0], edge[1]
+        n1, n2 = index[v1], index[v2]
+        edge_list.append([n1, n2])
+
+    return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, torch.LongTensor(node_ids)
+
+def construct_line_graph_undirected(node_ids, A, z, node_features): 
     info = {}
     z = z.tolist()
     node_ids = node_ids.tolist()
