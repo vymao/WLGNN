@@ -30,7 +30,7 @@ def neighbors(fringe, A, row=True):
 
 
 def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0, 
-                   max_nodes_per_hop=None, node_features=None):
+                   max_nodes_per_hop=None, node_features=None, directed=False):
     # Extract the k-hop enclosing subgraph around link (src, dst) from A. 
     nodes = [src, dst]
     dists = [0, 0]
@@ -52,8 +52,12 @@ def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0,
     subgraph = A[nodes, :][:, nodes]
 
     # Remove target link between the subgraph.
-    subgraph[0, 1] = 1
-    subgraph[1, 0] = 1
+    if directed: 
+        subgraph[0, 1] = 0
+        subgraph[1, 0] = 0        
+    else: 
+        subgraph[0, 1] = 1
+        subgraph[1, 0] = 1
 
     if node_features is not None:
         node_features = node_features[nodes]

@@ -33,7 +33,7 @@ warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
 # An end-to-end deep learning architecture for graph classification, AAAI-18.
 class WLGNN_model(torch.nn.Module):
-    def __init__(self, args, train_dataset, dataset, hidden_channels, num_layers, max_z, GNN=GATConv, k=0.6, 
+    def __init__(self, args, train_dataset, dataset, hidden_channels, num_layers, max_z, GNN=GCNConv, k=0.6, 
                  use_feature=False, node_embedding=None):
         super(WLGNN_model, self).__init__()
 
@@ -62,13 +62,14 @@ class WLGNN_model(torch.nn.Module):
             initial_channels += dataset.num_features * 2
         if self.node_embedding is not None:
             initial_channels += node_embedding.embedding_dim
-        
-        num_heads = 3
-        self.convs.append(GNN(initial_channels, hidden_channels, num_heads))
-        self.convs.append(GNN(hidden_channels * num_heads, 1))
+
+        self.convs.append(GNN(initial_channels, hidden_channels))
+        for i in range(0, num_layers-1):
+            self.convs.append(GNN(hidden_channels, hidden_channels))
+        self.convs.append(GNN(hidden_channels, 1))
 
         conv1d_channels = [16, 32]
-        total_latent_dim = hidden_channels * num_heads + 1
+        total_latent_dim = hidden_channels * num_layers + 1
         conv1d_kws = [total_latent_dim, 5]
         self.conv1 = Conv1d(1, conv1d_channels[0], conv1d_kws[0],
                             conv1d_kws[0])

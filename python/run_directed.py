@@ -20,7 +20,7 @@ from sklearn.metrics import mean_squared_error
 import scipy.sparse as ssp
 import torch
 import torch.nn.functional as F
-from torch.nn import BCEWithLogitsLoss, MSELoss
+from torch.nn import BCEWithLogitsLoss, MSELoss, CrossEntropyLoss
 from torch.nn import ModuleList, Linear, Conv1d, MaxPool1d, Embedding
 from torch.utils.data import DataLoader
 
@@ -44,14 +44,6 @@ from DataSet import *
 from WLGNN import *
 from DirectedDataset import *
 
-def evaluate_auc(val_pred, val_true, test_pred, test_true):
-    valid_auc = roc_auc_score(val_true, val_pred)
-    test_auc = roc_auc_score(test_true, test_pred)
-    results = {}
-    results['AUC'] = (valid_auc, test_auc)
-
-    return results
-
 def train():
     model.train()
 
@@ -62,24 +54,13 @@ def train():
         optimizer.zero_grad()
         #print(data)
         #print(args)
-        out = model(data).view(-1)
+        #out = model(data).view(-1)
+        out = model(data)
+
         if args.multi_gpu: y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
         else: y = data.y.to(torch.float)
 
-        if args.neg_edge_percent != 100:
-            y_neg = y[y == 0]
-            out_neg = out[y == 0]
-            y_pos = y[y != 0]
-            out_pos = out[y != 0]
-            
-            num_neg = int(args.neg_edge_percent / 100 * len(out_neg))
-            out_neg, y_neg  = out_neg[:num_neg], y_neg[:num_neg]
-            
-            y = torch.cat([y_pos, y_neg])
-            out = torch.cat([out_pos, out_neg])
-            
-
-        loss = MSELoss()(out, y)
+        loss = CrossEntropyLoss()(out, y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * len(data)
@@ -112,8 +93,8 @@ def test():
         y_true.append(y)
 
     val_pred, val_true = torch.cat(y_pred), torch.cat(y_true)
-    #pos_val_pred = val_pred[val_true==1]
-    #neg_val_pred = val_pred[val_true==0]
+    pos_val_pred = val_pred[val_true==1]
+    neg_val_pred = val_pred[val_true==0]
 
     y_pred, y_true = [], []
     for data in tqdm(test_loader):
@@ -135,18 +116,39 @@ def test():
         y_pred.append(out)
         y_true.append(y)
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
-    #pos_test_pred = test_pred[test_true==1]
-    #neg_test_pred = test_pred[test_true==0]
+    pos_test_pred = test_pred[test_true==1]
+    neg_test_pred = test_pred[test_true==0]
 
-    results = {}
-    results['MSE'] = (mean_squared_error(val_true, val_pred), mean_squared_error(test_true, test_pred))
+    results['MRR'] = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
+    results['AUC'] = evaluate_auc(val_pred, val_true, test_pred, test_true)
     return results
 
+def evaluate_auc(val_pred, val_true, test_pred, test_true):
+    valid_auc = roc_auc_score(val_true, val_pred)
+    test_auc = roc_auc_score(test_true, test_pred)
+    results = {}
+    return (valid_auc, test_auc)
+
+def evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred):
+    neg_val_pred = neg_val_pred.view(pos_val_pred.shape[0], -1)
+    neg_test_pred = neg_test_pred.view(pos_test_pred.shape[0], -1)
+    results = {}
+    valid_mrr = evaluator.eval({
+        'y_pred_pos': pos_val_pred,
+        'y_pred_neg': neg_val_pred,
+    })['mrr_list'].mean().item()
+
+    test_mrr = evaluator.eval({
+        'y_pred_pos': pos_test_pred,
+        'y_pred_neg': neg_test_pred,
+    })['mrr_list'].mean().item()
+
+    return (valid_mrr, test_mrr)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Dataset Creation')
 
-    parser.add_argument('--dataset', type=str, default='ogbl-collab')
+    parser.add_argument('--dataset', type=str, default='ogbl-biokg')
     # GNN settings
     parser.add_argument('--model', type=str, default='DGCNN')
     parser.add_argument('--sortpool_k', type=float, default=0.6)
@@ -209,16 +211,14 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--weight_decay', type=float, default=0.0005)
     parser.add_argument('--early_stopping', type=int, default=200)
-    parser.add_argument('--hidden', type=int, default=32)
 
     parser.add_argument('--dropout', type=float, default=0.6)
     parser.add_argument('--alpha', type=float, default=0.1)
     parser.add_argument('--recache', action="store_true", help="clean up the old adj data", default=True)
     parser.add_argument('--normalize-features', action="store_true", default=True)
     parser.add_argument('--adj_type', type=str, default='ib')
-
-
-
+    parser.add_argument('--aggregation', type=str, default='sum')
+    parser.add_argument('--node_embed_dim', type=int, default=16)
 
 
     return parser.parse_args()
@@ -268,9 +268,11 @@ train_dataset = eval(dataset_class)(
     path, 
     train_data, 
     split_edge, 
+    num_nodes,
     alpha=args.alpha,
     num_hops=args.num_hops, 
     percent=args.train_percent, 
+    input_dim=args.node_embed_dim,
     split='train', 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
@@ -282,9 +284,11 @@ val_dataset = eval(dataset_class)(
     path, 
     train_data, 
     split_edge, 
+    num_nodes,
     alpha=args.alpha,
     num_hops=args.num_hops, 
     percent=args.train_percent, 
+    input_dim=args.node_embed_dim,
     split='valid', 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
@@ -296,9 +300,11 @@ test_dataset = eval(dataset_class)(
     path, 
     train_data, 
     split_edge, 
+    num_nodes,
     alpha=args.alpha,
     num_hops=args.num_hops, 
-    percent=args.train_percent, 
+    percent=args.train_percent,
+    input_dim=args.node_embed_dim, 
     split='test', 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
@@ -328,19 +334,21 @@ else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
 
 for run in range(args.runs):
     emb = None
-    model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
-                  max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
-                  node_embedding=emb)
+    #model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
+                  #max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
+                  #node_embedding=emb)
+
+    if args.aggregation == 'sum': model = Sparse_Three_Sum(node_embed_dim * 2 + 52, args.hidden_channels, 10, args.dropout)
+    else: model = Sparse_Three_Concat(node_embed_dim * 2 + 52, args.hidden_channels, 10, args.dropout)
 
     wandb.watch(model)
 
     parameters = list(model.parameters())
 
-    optimizer = torch.optim.Adam(params=parameters, lr=args.lr)
+    optimizer = torch.optim.Adam(params=parameters, lr=args.lr, weight_decay=args.weight_decay)
     total_params = sum(p.numel() for param in parameters for p in param)
     print(f'Total number of parameters is {total_params}')
-    if args.model == 'DGCNN':
-        print(f'SortPooling k is set to {model.k}')
+    print(f'SortPooling k is set to {model.k}')
     log_file = os.path.join(args.res_dir, 'log.txt')
     with open(log_file, 'a') as f:
         print(f'Total number of parameters is {total_params}', file=f)
@@ -375,44 +383,23 @@ for run in range(args.runs):
                 torch.save(model.state_dict(), model_name)
                 torch.save(optimizer.state_dict(), optimizer_name)
 
-                for key, result in results.items():
-                    valid_res, test_res = result
+                valid_res_AUC, test_res_AUC = result['AUC']
+                valid_res_MRR, test_res_MRR = result['MRR']
 
-                    wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized MSE Train Loss": loss,
-                        "Valid_set MSE": valid_res, "Test_set MSE": test_res})
+                wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized CrossEntropy Train Loss": loss,
+                    "Valid_set MRR": valid_res_MRR, "Test_set MRR": test_res_MRR, "Valid_set AUC": valid_res_AUC, 
+                    "Test_set AUC": valid_res_AUC})
 
-                    print(key)
-                    print(f'Run: {run + 1:02d}, '
-                          f'Epoch: {epoch:02d}, '
-                          f'Loss: {loss:.4f}, '
-                          f'Valid MSE: {valid_res:.2f}%, '
-                          f'Test MSE: {test_res:.2f}%')
+                print(f'Run: {run + 1:02d}, '
+                      f'Epoch: {epoch:02d}, '
+                      f'Loss: {loss:.4f}, '
+                      f'Valid MRR: {valid_res_MRR:.2f}%, '
+                      f'Test MRR: {test_res_MRR:.2f}% '
+                      f'Valid AUC: {valid_res_AUC:.2f}%, '
+                      f'Test AUC: {test_res_AUC:.2f}% '
+                      )
         gc.collect()
 print(f'Results are saved in {args.res_dir}')
-
-
-
-def run_digcn(dataset,gpu_no):
-    dataset = get_citation_dataset(dataset, args.alpha, args.recache, args.normalize_features, args.adj_type)
-    # Replace Sparse_Three_Sum with Sparse_Three_Concat to test concat
-    val_loss, test_acc, test_std, time = run(dataset, gpu_no, Sparse_Three_Sum(dataset), args.runs, args.epochs, args.lr, args.weight_decay,
-        args.early_stopping)
-    return val_loss, test_acc, test_std, time
-
-if __name__ == '__main__':
-    if args.dataset is not None:
-        dataset_name = [args.dataset]
-    else:
-        dataset_name = ['cora_ml','citeseer']
-    outputs = ['val_loss', 'test_acc', 'test_std', 'time']                
-    result = pd.DataFrame(np.arange(len(outputs)*len(dataset_name), dtype=np.float32).reshape(
-        (len(dataset_name), len(outputs))), index=dataset_name, columns=outputs)
-    for dataset in dataset_name:
-        val_loss, test_acc, test_std, time = run_digcn(dataset,args.gpu_no)
-        result.loc[dataset]['val_loss'] = val_loss
-        result.loc[dataset]['test_acc'] = test_acc
-        result.loc[dataset]['test_std'] = test_std
-        result.loc[dataset]['time'] = time
 
 
 

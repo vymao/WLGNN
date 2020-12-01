@@ -64,19 +64,6 @@ def train():
         out = model(data).view(-1)
         if args.multi_gpu: y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
         else: y = data.y.to(torch.float)
-
-        if len(y) != len(out): 
-            print(torch.unique(data.batch))
-            print(data.x)
-            print(data.y)
-            print(data.w)
-            print(data.z1)
-            print(data.z2)
-            print(data.node_id)
-            print(len(y))
-            print(len(out))
-            print(y)
-            print(out)
          
         if args.neg_edge_percent != 100:
             y_neg = y[y == 0]
@@ -114,19 +101,6 @@ def test():
         
         if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
         else: y = data.y.view(-1).cpu().to(torch.float)
-        
-        if len(y) != len(out): 
-            print(torch.unique(data.batch))
-            print(data.x)
-            print(data.y)
-            print(data.w)
-            print(data.z1)
-            print(data.z2)
-            print(data.node_id)
-            print(len(y))
-            print(len(out))
-            print(y)
-            print(out)
 
         if args.pos_edge_test_only: 
             y_status = y != 0
@@ -151,19 +125,6 @@ def test():
 
         if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
         else: y = data.y.view(-1).cpu().to(torch.float)
-
-        if len(y) != len(out): 
-            print(torch.unique(data.batch))
-            print(data.x)
-            print(data.y)
-            print(data.w)
-            print(data.z1)
-            print(data.z2)
-            print(data.node_id)
-            print(len(y))
-            print(len(out))
-            print(y)
-            print(out)
 
         if args.pos_edge_test_only: 
             y_status = y != 0

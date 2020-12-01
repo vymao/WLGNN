@@ -66,7 +66,7 @@ class Directed_Dataset(Dataset):
             node_type[data['head'][edge]] = word2idx[data['head_type'][edge]]
             node_type[data['tail'][edge]] = word2idx[data['tail_type'][edge]]
 
-        node_type = torch.LongTensor(head_type)
+        node_type = torch.LongTensor(node_type)
         self.x = embedding(node_type)
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
@@ -94,15 +94,16 @@ class Directed_Dataset(Dataset):
     def process(self):
         for idx in tqdm(range(len(self.links))):
             src, dst = self.links[idx]
+            y = self.A[src, dst]
 
             if self.labels[idx]: status = "pos"
             else: status = "neg"
 
             tmp = k_hop_subgraph(src, dst, self.num_hops, self.A, status, self.ratio_per_hop, 
-                                 self.max_nodes_per_hop, node_features=self.x)
+                                 self.max_nodes_per_hop, node_features=self.x, directed=True)
             L_node_features, L_edges,  L_num_nodes, L_node_ids = construct_pyg_graph(*tmp, self.node_label, directed=True)
     
-            data = citation_datasets(L_node_features, L_edges,  L_num_nodes, L_node_ids, A[src, dst], self.alpha, self.adj_type)        
+            data = citation_datasets(L_node_features, L_edges,  L_num_nodes, L_node_ids, y, self.alpha, self.adj_type)        
             data = data if self.pre_transform is None else self.pre_transform(data)
             torch.save(data, osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
             #torch.save(self.collate([data]), self.processed_paths[0])
@@ -202,15 +203,3 @@ def load_npz_dataset(node_features, edges,  num_nodes, node_ids):
         }
 
         return graph
-
-if __name__ == "__main__":
-    data = citation_datasets(save_path="../data", dataset='cora_ml')
-    print(data.train_mask.shape)
-    # print_dataset_info()
-    # get_npz_data(dataset='amazon_photo')
-    ### already fixed split dataset!!!
-    #if opt.dataset == 'all':
-    #    for mode in ['cora', 'cora_ml','citeseer','dblp','pubmed']:
-    #        get_npz_data(dataset = mode)
-    #else:
-    #    get_npz_data(dataset = opt.dataset)
