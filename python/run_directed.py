@@ -166,7 +166,7 @@ def parse_args():
     parser.add_argument('--use_edge_weight', action='store_true', 
                         help="whether to consider edge weight in GNN")
     # Training settings
-    parser.add_argument('--lr', type=float, default=0.0001)
+    parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--runs', type=int, default=1)
     parser.add_argument('--train_percent', type=float, default=100)
@@ -206,14 +206,11 @@ def parse_args():
     parser.add_argument('--pos_edge_test_only', action='store_true', 
                         help='whether to only test against positive edge weights or all edges')
 
-    parser.add_argument('--runs', type=int, default=20)
-    parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--lr', type=float, default=0.01)
     parser.add_argument('--weight_decay', type=float, default=0.0005)
     parser.add_argument('--early_stopping', type=int, default=200)
 
     parser.add_argument('--dropout', type=float, default=0.6)
-    parser.add_argument('--alpha', type=float, default=0.1)
+    parser.add_argument('--alpha', type=float, default=0)
     parser.add_argument('--recache', action="store_true", help="clean up the old adj data", default=True)
     parser.add_argument('--normalize-features', action="store_true", default=True)
     parser.add_argument('--adj_type', type=str, default='ib')

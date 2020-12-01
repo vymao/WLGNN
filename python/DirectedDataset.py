@@ -38,7 +38,7 @@ class Directed_Dataset(Dataset):
             being saved to disk. (default: :obj:`None`)
     """
 
-    def __init__(self, root, data, split_edge, num_nodes, alpha, num_hops, percent, input_dim = 16, 
+    def __init__(self, root, data, split_edge, num_nodes, node_dict, alpha, num_hops, percent, input_dim = 16, 
                     split='train', ratio_per_hop=1.0, max_nodes_per_hop=None, adj_type=None, transform=None, pre_transform=None):
         self.data = data
         self.split_edge = split_edge
@@ -47,12 +47,18 @@ class Directed_Dataset(Dataset):
         self.num_nodes = num_nodes
         self.num_hops = num_hops
         self.percent = int(percent) if percent >= 1.0 else percent
-        self.split = splitc
+        self.split = split
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
 
+        total = 0
+        skip = {}
+        for key in node_dict.keys(): 
+            skip[key] = total
+            total += node_dict[key]
+
         max_z = 100
-        self.embedding = Embedding(self.max_z, input_dim)
+        embedding = Embedding(max_z, input_dim)
         word2idx = {
             "disease": 1, 
             "function": 2, 
@@ -63,10 +69,13 @@ class Directed_Dataset(Dataset):
 
         node_type= list(range(num_nodes))
         for edge in range(len(data['relation'])): 
-            node_type[data['head'][edge]] = word2idx[data['head_type'][edge]]
-            node_type[data['tail'][edge]] = word2idx[data['tail_type'][edge]]
+            node_type[data['head'][edge] + skip[data['head_type'][edge]]] = word2idx[data['head_type'][edge]]
+            node_type[data['tail'][edge] + skip[data['tail_type'][edge]] = word2idx[data['tail_type'][edge]]
 
         node_type = torch.LongTensor(node_type)
+        print(node_type.size())
+        print(node_type[node_type > 5].size())
+        print(node_type[:10])
         self.x = embedding(node_type)
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
