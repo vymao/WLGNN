@@ -16,8 +16,14 @@ from torch_scatter import scatter_add
 import scipy
 from torch_geometric.data import InMemoryDataset, Dataset
 from get_adj import get_undirected_adj,get_pr_directed_adj,get_appr_directed_adj,get_second_directed_adj
-from DataSet import *
+from DataSet import get_pos_neg_edges
 from enclosing_subgraph import *
+
+from torch_sparse import coalesce
+from torch_scatter import scatter_min
+
+import glob
+from torch_geometric.data.makedirs import makedirs
 
 class Directed_Dataset(Dataset):
     r"""
@@ -57,30 +63,28 @@ class Directed_Dataset(Dataset):
             skip[key] = total
             total += node_dict[key]
 
-        max_z = 100
-        embedding = Embedding(max_z, input_dim)
-        word2idx = {
-            "disease": 1, 
-            "function": 2, 
-            "drug": 3, 
-            "sideeffect": 4, 
-            "protein": 5
-        }
-
-        node_type= list(range(num_nodes))
+        new_head, new_tail = [], []
         for edge in range(len(data['relation'])): 
-            node_type[data['head'][edge] + skip[data['head_type'][edge]]] = word2idx[data['head_type'][edge]]
-            node_type[data['tail'][edge] + skip[data['tail_type'][edge]] = word2idx[data['tail_type'][edge]]
+            new_head.append(data['head'][edge] + skip[data['head_type'][edge]])
+            new_tail.append(data['tail'][edge] + skip[data['tail_type'][edge]])
+        
+        split_edge['head'] = new_head
+        split_edge['tail'] = new_tail
 
-        node_type = torch.LongTensor(node_type)
-        print(node_type.size())
-        print(node_type[node_type > 5].size())
-        print(node_type[:10])
-        self.x = embedding(node_type)
+        if 'head_neg' in split_edge.keys():
+            new_head, new_tail = [], [] 
+            for edge in range(len(data['relation'])): 
+                new_head.append(data['head_neg'][edge] + skip[data['head_type'][edge]])
+                new_tail.append(data['tail_neg'][edge] + skip[data['tail_type'][edge]])
+            
+            split_edge['head_neg'] = new_head
+            split_edge['tail_neg'] = new_tail
+
+        self.x = data['node_class']
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
-                                               self.num_nodes, 
-                                               self.percent)
+                                               num_nodes = self.num_nodes, 
+                                               percent = self.percent)
 
         self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
         self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
@@ -90,8 +94,7 @@ class Directed_Dataset(Dataset):
         (data['relation'] + 1, (self.data['head'], self.data['tail'])), 
         shape=(self.num_nodes, self.num_nodes))
 
-        super(Citation, self).__init__(root, transform, pre_transform)
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        super(Directed_Dataset, self).__init__(root, transform, pre_transform)
 
     @property
     def processed_file_names(self):
@@ -110,9 +113,9 @@ class Directed_Dataset(Dataset):
 
             tmp = k_hop_subgraph(src, dst, self.num_hops, self.A, status, self.ratio_per_hop, 
                                  self.max_nodes_per_hop, node_features=self.x, directed=True)
-            L_node_features, L_edges,  L_num_nodes, L_node_ids = construct_pyg_graph(*tmp, self.node_label, directed=True)
+            L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_pyg_graph(*tmp, directed=True)
     
-            data = citation_datasets(L_node_features, L_edges,  L_num_nodes, L_node_ids, y, self.alpha, self.adj_type)        
+            data = citation_datasets(L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes, y, self.alpha, self.adj_type)        
             data = data if self.pre_transform is None else self.pre_transform(data)
             torch.save(data, osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
             #torch.save(self.collate([data]), self.processed_paths[0])
@@ -131,7 +134,7 @@ class Directed_Dataset(Dataset):
     def __repr__(self):
         return '{}()'.format(self.name)
 
-def citation_datasets(features, edges,  num_nodes, node_ids, labels, alpha=0.1, adj_type=None):
+def citation_datasets(features, edges,  num_nodes, node_ids, node_classes, labels, alpha=0.1, adj_type=None):
     # path = os.path.join(save_path, dataset)
     indices = edges.t()
 
@@ -151,19 +154,19 @@ def citation_datasets(features, edges,  num_nodes, node_ids, labels, alpha=0.1, 
         print("Processing to undirected adj")
         indices = to_undirected(indices)
         edge_index, edge_weight = get_undirected_adj(indices, features.shape[0], features.dtype)
-        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]))
+        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]), node_classes=node_classes)
     elif adj_type == 'pr':
         print("Processing pagerank adj matrix")
         edge_index, edge_weight = get_pr_directed_adj(alpha, indices, features.shape[0],features.dtype)
-        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]))
+        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]), node_classes=node_classes)
     elif adj_type == 'appr':
         print("Processing approximate personalized pagerank adj matrix")
         edge_index, edge_weight = get_appr_directed_adj(alpha, indices, features.shape[0],features.dtype)
-        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]))
+        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]), node_classes=node_classes)
     elif adj_type == 'ib':
         print("Processing first and second-order adj matrix")
         edge_index, edge_weight = get_appr_directed_adj(alpha, indices, features.shape[0],features.dtype) 
-        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]))
+        data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]), node_classes=node_classes)
         edge_index, edge_weight = get_second_directed_adj(indices, features.shape[0],features.dtype)
         data.edge_index2 = edge_index
         data.edge_weight2 = edge_weight

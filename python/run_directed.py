@@ -260,6 +260,33 @@ num_nodes = 0
 for key in num_nodes_dict.keys(): 
     num_nodes += num_nodes_dict[key]
 
+
+total = 0
+skip = {}
+for key in data['num_nodes_dict'].keys():
+    skip[key] = total
+    total += data['num_nodes_dict'][key]
+
+word2idx = {
+    "disease": 1,
+    "function": 2,
+    "drug": 3,
+    "sideeffect": 4,
+    "protein": 5
+}
+
+node_type= list(range(num_nodes))
+new_head, new_tail = [], []
+for edge in range(len(train_data['relation'])):
+    node_type[train_data['head'][edge] + skip[train_data['head_type'][edge]]] = word2idx[train_data['head_type'][edge]]
+    node_type[train_data['tail'][edge] + skip[train_data['tail_type'][edge]]] = word2idx[train_data['tail_type'][edge]]
+    new_head.append(train_data['head'][edge] + skip[train_data['head_type'][edge]])
+    new_tail.append(train_data['tail'][edge] + skip[train_data['tail_type'][edge]])
+node_type = torch.LongTensor(node_type)
+train_data['head'] = torch.LongTensor(new_head)
+train_data['tail'] = torch.LongTensor(new_tail)
+train_data['node_class'] = node_type
+
 dataset_class = 'Directed_Dataset' 
 train_dataset = eval(dataset_class)(
     path, 
@@ -267,6 +294,7 @@ train_dataset = eval(dataset_class)(
     split_edge, 
     num_nodes,
     alpha=args.alpha,
+    node_dict = data['num_nodes_dict'],
     num_hops=args.num_hops, 
     percent=args.train_percent, 
     input_dim=args.node_embed_dim,
@@ -283,6 +311,7 @@ val_dataset = eval(dataset_class)(
     split_edge, 
     num_nodes,
     alpha=args.alpha,
+    node_dict = data['num_nodes_dict'],
     num_hops=args.num_hops, 
     percent=args.train_percent, 
     input_dim=args.node_embed_dim,
@@ -299,6 +328,7 @@ test_dataset = eval(dataset_class)(
     split_edge, 
     num_nodes,
     alpha=args.alpha,
+    node_dict = data['num_nodes_dict'],
     num_hops=args.num_hops, 
     percent=args.train_percent,
     input_dim=args.node_embed_dim, 

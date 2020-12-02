@@ -128,13 +128,13 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
             z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=len(L_node_ids), o_data=o_data)
         return data
     else: 
-        L_node_features, L_edges,  L_num_nodes, L_node_ids = construct_line_graph_directed(node_ids, adj, node_features)
+        L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, adj, node_features)
         
-        return L_node_features, L_edges,  L_num_nodes, L_node_ids
+        return L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes
 
 
 def construct_line_graph_directed(node_ids, A, node_features):
-    u, v, r = ssp.find(adj)
+    u, v, r = ssp.find(A)
     node_ids = node_ids.tolist()
     node_features = node_features.tolist()
 
@@ -145,6 +145,7 @@ def construct_line_graph_directed(node_ids, A, node_features):
     A_edges_reverse = list(zip(v, u))
 
     info = {}
+    node_class = {}
     for edge in A_edges_forward: 
         src, end = edge[0], edge[1]
         weight = A[src,end]
@@ -152,7 +153,8 @@ def construct_line_graph_directed(node_ids, A, node_features):
         edge_label[weight] = 1
 
         f1, f2 = node_features[src], node_features[end]
-        info[(src, end)] = edge_label + f1 + f2
+        info[(src, end)] = edge_label
+        node_class[(src, end)] = [f1, f2]
 
     for edge in A_edges_reverse: 
         src, end = edge[0], edge[1]
@@ -161,7 +163,8 @@ def construct_line_graph_directed(node_ids, A, node_features):
         edge_label[weight] = 1
 
         f1, f2 = node_features[src], node_features[end]
-        info[(src, end)] = edge_label + f1 + f2
+        info[(src, end)] = edge_label
+        node_class[(src, end)] = [f1, f2]
 
     G.add_edges_from(A_edges_forward)
     G.add_edges_from(A_edges_reverse)
@@ -174,11 +177,12 @@ def construct_line_graph_directed(node_ids, A, node_features):
     L_node_features = []
 
     index = {}
-    node_ids = []
+    node_ids, f = [], []
     value = 0
     for node in L_node_ids:
         node_ids.append(value) 
         L_node_features.append(info[node])
+        f.append(node_class[node])
         index[node] = value
         value += 1
 
@@ -188,7 +192,7 @@ def construct_line_graph_directed(node_ids, A, node_features):
         n1, n2 = index[v1], index[v2]
         edge_list.append([n1, n2])
 
-    return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, torch.LongTensor(node_ids)
+    return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, torch.LongTensor(node_ids), torch.LongTensor(f)
 
 def construct_line_graph_undirected(node_ids, A, z, node_features): 
     info = {}
