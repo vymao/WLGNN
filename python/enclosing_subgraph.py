@@ -102,6 +102,7 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
     # Construct a pytorch_geometric graph from a scipy csr adjacency matrix.
     #u, v, r = ssp.find(adj)
     num_nodes = adj.shape[0]
+    print(f'num_nodes: {num_nodes}')
     
     node_ids = torch.LongTensor(node_ids)
     #u, v = torch.LongTensor(u), torch.LongTensor(v)
@@ -129,16 +130,21 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
         return data
     else: 
         L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, adj, node_features)
+        print(f'num_edges: {L_edges.size()}')
+        
+        
         
         return L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes
 
 
 def construct_line_graph_directed(node_ids, A, node_features):
     u, v, r = ssp.find(A)
+    print(f'num_edges_khop: {len(u)}')
+    print(f'num_nodes_khop: {node_ids.size()}')
     node_ids = node_ids.tolist()
     node_features = node_features.tolist()
 
-    G = nx.Graph()
+    G = nx.DiGraph()
     G.add_nodes_from(node_ids)
     rows, cols = A.nonzero()
     A_edges_forward = list(zip(u, v))  
@@ -168,6 +174,8 @@ def construct_line_graph_directed(node_ids, A, node_features):
 
     G.add_edges_from(A_edges_forward)
     G.add_edges_from(A_edges_reverse)
+    
+
     L = nx.line_graph(G)
     num_nodes = L.number_of_nodes()
        

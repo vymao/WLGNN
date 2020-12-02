@@ -101,10 +101,7 @@ def get_appr_directed_adj(alpha, edge_index, num_nodes, dtype, edge_weight=None)
         edge_index, edge_weight, fill_value, num_nodes)  
     row, col = edge_index
     deg = scatter_add(edge_weight, row, dim=0, dim_size=num_nodes)
-    print(deg.size())
-    print(deg[:10])
     deg = deg.float()
-
  
     deg_inv = deg.pow(-1) 
     deg_inv[deg_inv == float('inf')] = 0

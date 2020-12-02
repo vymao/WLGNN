@@ -164,7 +164,7 @@ def citation_datasets(features, edges,  num_nodes, node_ids, node_classes, label
         edge_index, edge_weight = get_appr_directed_adj(alpha, indices, features.shape[0],features.dtype)
         data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]), node_classes=node_classes)
     elif adj_type == 'ib':
-        print("Processing first and second-order adj matrix")
+        #print("Processing first and second-order adj matrix")
         edge_index, edge_weight = get_appr_directed_adj(alpha, indices, features.shape[0],features.dtype) 
         data = Data(x=features, edge_index=edge_index, edge_weight=edge_weight, y=torch.tensor([labels]), node_classes=node_classes)
         edge_index, edge_weight = get_second_directed_adj(indices, features.shape[0],features.dtype)
