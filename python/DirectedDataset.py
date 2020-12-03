@@ -57,28 +57,29 @@ class Directed_Dataset(Dataset):
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
 
-        total = 0
-        skip = {}
-        for key in node_dict.keys(): 
-            skip[key] = total
-            total += node_dict[key]
+        if split != 'train':
+            current_data= split_edge[split]
+            total = 0
+            skip = {}
+            for key in node_dict.keys(): 
+                skip[key] = total
+                total += node_dict[key]
 
-        new_head, new_tail = [], []
-        for edge in range(len(data['relation'])): 
-            new_head.append(data['head'][edge] + skip[data['head_type'][edge]])
-            new_tail.append(data['tail'][edge] + skip[data['tail_type'][edge]])
-        
-        split_edge['head'] = new_head
-        split_edge['tail'] = new_tail
-
-        if 'head_neg' in split_edge.keys():
-            new_head, new_tail = [], [] 
-            for edge in range(len(data['relation'])): 
-                new_head.append(data['head_neg'][edge] + skip[data['head_type'][edge]])
-                new_tail.append(data['tail_neg'][edge] + skip[data['tail_type'][edge]])
+            new_head, new_tail = [], []
+            for edge in range(len(current_data['relation'])): 
+                new_head.append(current_data['head'][edge] + skip[current_data['head_type'][edge]])
+                new_tail.append(current_data['tail'][edge] + skip[current_data['tail_type'][edge]])
             
-            split_edge['head_neg'] = new_head
-            split_edge['tail_neg'] = new_tail
+            current_data['head'] = new_head
+            current_data['tail'] = new_tail
+            
+            new_head, new_tail = [], [] 
+            for edge in range(len(current_data['relation'])): 
+                new_head.append(current_data['head_neg'][edge] + skip[current_data['head_type'][edge]])
+                new_tail.append(current_data['tail_neg'][edge] + skip[current_data['tail_type'][edge]])
+            
+            current_data['head_neg'] = new_head
+            current_data['tail_neg'] = new_tail
 
         self.x = data['node_class']
 
