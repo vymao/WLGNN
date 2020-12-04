@@ -263,7 +263,10 @@ for key in num_nodes_dict.keys():
 
 total = 0
 skip = {}
+
+#print()
 for key in data['num_nodes_dict'].keys():
+    #print(f'{key}: {total}')
     skip[key] = total
     total += data['num_nodes_dict'][key]
 
@@ -274,6 +277,11 @@ word2idx = {
     "sideeffect": 4,
     "protein": 5
 }
+
+#print(train_data['head'][0])
+#print(train_data['tail'][0])
+#print(train_data['head_type'][0])
+#print(train_data['tail_type'][0])
 
 node_type= list(range(num_nodes))
 new_head, new_tail = [], []
@@ -286,6 +294,9 @@ node_type = torch.LongTensor(node_type)
 train_data['head'] = torch.LongTensor(new_head)
 train_data['tail'] = torch.LongTensor(new_tail)
 train_data['node_class'] = node_type
+
+print(max(new_head))
+print(max(new_tail))
 
 dataset_class = 'Directed_Dataset' 
 train_dataset = eval(dataset_class)(

@@ -64,6 +64,8 @@ def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0,
 
     if status == "pos": y = A[src, dst]
     else: y = 0
+    
+    #print(f'k-hop num_nodes: {len(nodes)}')
 
     return nodes, subgraph, dists, node_features, y
 
@@ -102,8 +104,6 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
     # Construct a pytorch_geometric graph from a scipy csr adjacency matrix.
     #u, v, r = ssp.find(adj)
     num_nodes = adj.shape[0]
-    print(f'num_edges_khop: {len(u)}')
-    print(f'num_nodes_khop: {node_ids.size()}')
     
     node_ids = torch.LongTensor(node_ids)
     #u, v = torch.LongTensor(u), torch.LongTensor(v)
@@ -140,6 +140,11 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
 def construct_line_graph_directed(node_ids, A, node_features):
 
     u, v, r = ssp.find(A)
+    print(f'max_weight: {max(r)}')
+    
+    #print(f'num_edges_khop: {len(u)}')
+    #print(f'num_nodes_khop: {node_ids.size()}')
+
     node_ids = node_ids.tolist()
     node_features = node_features.tolist()
 
@@ -154,7 +159,8 @@ def construct_line_graph_directed(node_ids, A, node_features):
     for edge in A_edges_forward: 
         src, end = edge[0], edge[1]
         weight = A[src,end]
-        edge_label = [0] * 52 + [node_features[src].item() != node_features[end].item()]
+        edge_label = [0] * 52 + [node_features[src] != node_features[end]]
+        #print(weight)
         edge_label[weight] = 1
 
         f1, f2 = node_features[src], node_features[end]
@@ -163,8 +169,9 @@ def construct_line_graph_directed(node_ids, A, node_features):
 
     for edge in A_edges_reverse: 
         src, end = edge[0], edge[1]
-        weight = A[src,end]
-        edge_label = [0] * 52 + [node_features[src].item() != node_features[end].item()]
+        weight = A[end,src]
+        edge_label = [0] * 52 + [node_features[src] != node_features[end]]
+        #print(weight)
         edge_label[weight] = 1
 
         f1, f2 = node_features[src], node_features[end]

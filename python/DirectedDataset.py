@@ -82,6 +82,7 @@ class Directed_Dataset(Dataset):
             current_data['tail_neg'] = new_tail
 
         self.x = data['node_class']
+        self.data['relation'] = self.data['relation'] + 1
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
                                                num_nodes = self.num_nodes, 
@@ -90,9 +91,11 @@ class Directed_Dataset(Dataset):
         self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
         self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
         self.datalist = ['data_{}_{}.pt'.format(i, self.split) for i in range(len(self.links))]
+        print()
+        print(max(data['relation'].tolist()))
 
         self.A = ssp.csr_matrix(
-        (data['relation'] + 1, (self.data['head'], self.data['tail'])), 
+        (self.data['relation'].tolist(), (self.data['head'], self.data['tail'])), 
         shape=(self.num_nodes, self.num_nodes))
 
         super(Directed_Dataset, self).__init__(root, transform, pre_transform)
@@ -107,6 +110,10 @@ class Directed_Dataset(Dataset):
     def process(self):
         for idx in tqdm(range(len(self.links))):
             src, dst = self.links[idx]
+            #print()
+            #print((src, dst))
+            #print(f'Num_src_out_edge: {self.split_edge[self.split]["head"][self.split_edge[self.split]["head"] == src].size()}')
+            #print(f'Num_dst_out_edge: {self.split_edge[self.split]["head"][self.split_edge[self.split]["head"] == dst].size()}')
             y = self.A[src, dst]
 
             if self.labels[idx]: status = "pos"
