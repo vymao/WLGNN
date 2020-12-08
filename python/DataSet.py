@@ -67,7 +67,9 @@ class WLDataset(InMemoryDataset):
         if self.use_coalesce:  # compress mutli-edge into edge with weight
             self.data.edge_index, self.data.edge_weight = coalesce(
                 self.data.edge_index, self.data.edge_weight, 
-                self.data.num_nodes, self.data.num_nodes)
+                self.data.num_nodes, self.data.num_nodes, op="mean")
+
+        self.data.edge_weight = torch.round(self.data.edge_weight)
 
         if 'edge_weight' in self.data:
             edge_weight = self.data.edge_weight.view(-1)

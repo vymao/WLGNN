@@ -79,6 +79,7 @@ def train():
             
 
         loss = MSELoss()(out, y)
+        loss = torch.sqrt(loss)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * len(data)
@@ -138,7 +139,7 @@ def test():
     #neg_test_pred = test_pred[test_true==0]
 
     results = {}
-    results['MSE'] = (mean_squared_error(val_true, val_pred), mean_squared_error(test_true, test_pred))
+    results['MSE'] = (mean_squared_error(val_true, val_pred, squared = False), mean_squared_error(test_true, test_pred, squared = False))
     return results
 
 
@@ -354,8 +355,8 @@ for run in range(args.runs):
                 for key, result in results.items():
                     valid_res, test_res = result
 
-                    wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized MSE Train Loss": loss,
-                        "Valid_set MSE": valid_res, "Test_set MSE": test_res})
+                    wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized RMSE Train Loss": loss,
+                        "Valid_set RMSE": valid_res, "Test_set RMSE": test_res})
 
                     print(key)
                     print(f'Run: {run + 1:02d}, '
