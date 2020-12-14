@@ -41,7 +41,7 @@ warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
 import gc
 from DataSet import *
-from WLGNN2 import *
+from WLGNN import *
 
 def evaluate_auc(val_pred, val_true, test_pred, test_true):
     valid_auc = roc_auc_score(val_true, val_pred)
