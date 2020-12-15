@@ -95,7 +95,7 @@ class WLDataset(InMemoryDataset):
 class WLDynamicDataset(Dataset):
     def __init__(self, root, data, split_edge, num_hops, percent=100, split='train',
                  use_coalesce=False, node_label='drnl', ratio_per_hop=1.0, 
-                 max_nodes_per_hop=None, **kwargs):
+                 max_nodes_per_hop=None, use_line_graph=True, **kwargs):
         self.data = data
         self.split_edge = split_edge
         self.num_hops = num_hops
@@ -104,9 +104,12 @@ class WLDynamicDataset(Dataset):
         self.node_label = node_label
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
+        self.use_line_graph = use_line_graph
+
+
         processed_dir = osp.join(root, "processed")
-        #print(self.datalist)
         self.split = split
+
 
         pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
                                                self.data.edge_index, 
@@ -158,8 +161,9 @@ class WLDynamicDataset(Dataset):
             else: status = "neg"
 
             tmp = k_hop_subgraph(src, dst, self.num_hops, self.A, status, self.ratio_per_hop, 
-                                 self.max_nodes_per_hop, node_features=self.data.x)
-            data = construct_pyg_graph(*tmp, self.node_label)
+                                 self.max_nodes_per_hop, node_features=self.data.x,
+                                  use_line_graph=self.use_line_graph)
+            data = construct_pyg_graph(*tmp, self.node_label, use_line_graph=self.use_line_graph)
 
             torch.save(data, osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
             #self.datalist.append('data_{}_{}.pt'.format(idx, self.split))

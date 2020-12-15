@@ -41,7 +41,7 @@ warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
 import gc
 from DataSet import *
-from WLGNN2 import *
+from WLGNN import *
 
 def evaluate_auc(val_pred, val_true, test_pred, test_true):
     valid_auc = roc_auc_score(val_true, val_pred)
@@ -163,6 +163,8 @@ def parse_args():
                         help="whether to use raw node features as GNN input")
     parser.add_argument('--use_edge_weight', action='store_true', 
                         help="whether to consider edge weight in GNN")
+    parser.add_argument('--use_line_graph', action='store_false',
+                        help='whether to use the original subgraph instead of the line graph')
     # Training settings
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--epochs', type=int, default=20)
@@ -252,6 +254,7 @@ train_dataset = eval(dataset_class)(
     node_label=args.node_label, 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
+    use_line_graph=args.use_line_graph,
 ) 
 
 dataset_class = 'WLDynamicDataset' if args.dynamic_val else 'WLDataset'
@@ -266,6 +269,7 @@ val_dataset = eval(dataset_class)(
     node_label=args.node_label, 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
+    use_line_graph=args.use_line_graph,
 )
 
 dataset_class = 'WLDynamicDataset' if args.dynamic_test else 'WLDataset'
@@ -280,6 +284,7 @@ test_dataset = eval(dataset_class)(
     node_label=args.node_label, 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
+    use_line_graph=args.use_line_graph,
 )
 print('Using', torch.cuda.device_count(), 'GPUs!')
 
@@ -305,9 +310,12 @@ else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
 
 for run in range(args.runs):
     emb = None
-    model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
-                  max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
-                  node_embedding=emb)
+    if not args.use_line_graph: model = DGCNN(hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
+                      max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
+                      node_embedding=emb)
+    else: model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
+                      max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
+                      node_embedding=emb)
 
     wandb.watch(model)
 

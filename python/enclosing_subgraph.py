@@ -30,7 +30,7 @@ def neighbors(fringe, A, row=True):
 
 
 def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0, 
-                   max_nodes_per_hop=None, node_features=None, directed=False):
+                   max_nodes_per_hop=None, node_features=None, directed=False, use_line_graph=True):
     # Extract the k-hop enclosing subgraph around link (src, dst) from A. 
     nodes = [src, dst]
     dists = [0, 0]
@@ -52,7 +52,7 @@ def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0,
     subgraph = A[nodes, :][:, nodes]
 
     # Remove target link between the subgraph.
-    if directed: 
+    if directed or not use_line_graph: 
         subgraph[0, 1] = 0
         subgraph[1, 0] = 0        
     else: 
@@ -100,7 +100,7 @@ def drnl_node_labeling(adj, src, dst):
     return z.to(torch.long)
 
 
-def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl', use_orig_A=False, directed=False):
+def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl', use_orig_A=False, directed=False, use_line_graph=True):
     # Construct a pytorch_geometric graph from a scipy csr adjacency matrix.
     #u, v, r = ssp.find(adj)
     num_nodes = adj.shape[0]
@@ -129,6 +129,21 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, y, node_label='drnl
         data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
             z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=len(L_node_ids), o_data=o_data)
         return data
+    elif not use_line_graph: 
+        u, v, r = ssp.find(adj)
+        num_nodes = adj.shape[0]
+        
+        u, v = torch.LongTensor(u), torch.LongTensor(v)
+        r = torch.LongTensor(r)
+        edge_index = torch.stack([u, v], 0)
+        edge_weight = r.to(torch.float)
+        
+        if node_label == 'drnl':
+            z = drnl_node_labeling(adj, 0, 1)
+        elif node_label == 'hop':
+            z = torch.tensor(dists)
+        data = Data(node_features, edge_index, edge_weight=edge_weight, y=y, z=z, 
+                    node_id=node_ids, num_nodes=num_nodes)
     else: 
         L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, adj, node_features)
         
