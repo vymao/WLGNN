@@ -61,7 +61,12 @@ def train():
         optimizer.zero_grad()
         #print(data)
         #print(args)
-        out = model(data).view(-1)
+        if args.use_orig_graph: 
+            x = data.x if args.use_feature else None
+            edge_weight = data.edge_weight if args.use_edge_weight else None
+            node_id = data.node_id if emb else None
+            out = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id).view(-1)
+        else: out = model(data).view(-1)
         if args.multi_gpu: y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
         else: y = data.y.to(torch.float)
          
@@ -97,7 +102,13 @@ def test():
         #x = data.x if args.use_feature else None
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
-        out = model(data)
+        if args.use_orig_graph:
+            x = data.x if args.use_feature else None
+            edge_weight = data.edge_weight if args.use_edge_weight else None
+            node_id = data.node_id if emb else None
+            out = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        else: out = model(data)
+
         out = torch.round(out.view(-1)).cpu()
         
         if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
@@ -121,7 +132,13 @@ def test():
         #x = data.x if args.use_feature else None
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
-        out = model(data)
+        if args.use_orig_graph:
+            x = data.x if args.use_feature else None
+            edge_weight = data.edge_weight if args.use_edge_weight else None
+            node_id = data.node_id if emb else None
+            out = model(data.z, data.edge_index, data.batch, x, edge_weight, node_id)
+        else: out = model(data)
+
         out = torch.round(out).view(-1).cpu()
 
         if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
@@ -137,6 +154,14 @@ def test():
     test_pred, test_true = torch.cat(y_pred), torch.cat(y_true)
     #pos_test_pred = test_pred[test_true==1]
     #neg_test_pred = test_pred[test_true==0]
+    if 1 in torch.isnan(val_true): 
+        print("Found in validation truth")
+    if 1 in torch.isnan(val_pred):
+        print("Found in validation prediction")
+    if 1 in torch.isnan(test_true): 
+        print("Found in test truth")
+    if 1 in torch.isnan(test_pred): 
+        print("Found in test prediction")
 
     results = {}
     results['MSE'] = (mean_squared_error(val_true, val_pred, squared = False), mean_squared_error(test_true, test_pred, squared = False))
@@ -147,6 +172,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Dataset Creation')
 
     parser.add_argument('--dataset', type=str, default='ogbl-collab')
+    parser.add_argument('--dataset_dir', type=str, default=None)
     # GNN settings
     parser.add_argument('--model', type=str, default='DGCNN')
     parser.add_argument('--sortpool_k', type=float, default=0.6)
@@ -163,7 +189,7 @@ def parse_args():
                         help="whether to use raw node features as GNN input")
     parser.add_argument('--use_edge_weight', action='store_true', 
                         help="whether to consider edge weight in GNN")
-    parser.add_argument('--use_orig_graph', action='store_false',
+    parser.add_argument('--use_orig_graph', action='store_true',
                         help='whether to use the original subgraph instead of the line graph')
     # Training settings
     parser.add_argument('--lr', type=float, default=0.0001)
@@ -237,7 +263,11 @@ if args.use_valedges_as_input:
     val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
     data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
 
-path = dataset.root + '_wl{}'.format(args.data_appendix)
+if args.dataset_dir is not None: 
+    path = os.path.join(args.dataset_dir, dataset.root) + '_wl{}'.format(args.data_appendix)
+else: 
+    path = dataset.root + '_wl{}'.format(args.data_appendix)
+
 use_coalesce = True
 
 #datalist = ['data_{}_{}.pt'.format(i, "t") for i in range(]
@@ -310,7 +340,7 @@ else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
 
 for run in range(args.runs):
     emb = None
-    if args.use_orig_graph: model = DGCNN(hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
+    if args.use_orig_graph: model = DGCNN(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                       max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                       node_embedding=emb)
     else: model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 

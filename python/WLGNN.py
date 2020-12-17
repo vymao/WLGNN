@@ -120,7 +120,7 @@ class WLGNN_model(torch.nn.Module):
         return x
 
 class DGCNN(torch.nn.Module):
-    def __init__(self, hidden_channels, num_layers, max_z, GNN=GCNConv, k=0.6, 
+    def __init__(self, args, train_dataset, dataset, hidden_channels, num_layers, max_z, GNN=GCNConv, k=0.6, 
                  use_feature=False, node_embedding=None):
         super(DGCNN, self).__init__()
 
