@@ -172,6 +172,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Dataset Creation')
 
     parser.add_argument('--dataset', type=str, default='ogbl-collab')
+    parser.add_argument('--dataset_file', type=str, default=None)
     parser.add_argument('--dataset_dir', type=str, default=None)
     # GNN settings
     parser.add_argument('--model', type=str, default='DGCNN')
@@ -239,10 +240,6 @@ def parse_args():
 args = parse_args()
 wandb.config.update(args)
 
-dataset = PygLinkPropPredDataset(name=args.dataset)
-data = dataset[0]
-split_edge = dataset.get_edge_split()
-
 if args.save_appendix == '':
     args.save_appendix = '_' + time.strftime("%Y%m%d%H%M%S")
 if args.data_appendix == '':
@@ -256,12 +253,69 @@ print('Results will be saved in ' + args.res_dir)
 if not os.path.exists(args.res_dir):
     os.makedirs(args.res_dir) 
 
-if args.use_valedges_as_input:
-    val_edge_index = split_edge['valid']['edge'].t()
-    val_edge_index = to_undirected(val_edge_index)
-    data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
-    val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
-    data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
+if "ogbl" in args.dataset:
+    dataset = PygLinkPropPredDataset(name=args.dataset)
+    data = dataset[0]
+    split_edge = dataset.get_edge_split()
+
+    if args.use_valedges_as_input:
+        val_edge_index = split_edge['valid']['edge'].t()
+        val_edge_index = to_undirected(val_edge_index)
+        data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
+        val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
+        data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
+
+else:
+    if args.dataset_file is None: 
+        print("Dataset file required.")
+        sys.exit()
+
+    s, d, w = [], [], []
+    with open(args.dataset_file, 'r') as f: 
+        for index, line in enumerate(f): 
+            t1, t2, t3 = line.strip().split(" ")
+            s.append(t1)
+            d.append(t2)
+            w.append(t3)
+
+    s = torch.LongTensor(s) - 1
+    d = torch.LongTensor(d) - 1
+    w = torch.LongTensor(w)
+
+    edges = torch.stack(s, d)
+    split_edge = {}
+
+    ### Setting training edges, validation edges, testing edges 
+    np.random.seed(123)
+    num_pos = edges.size(1)
+    perm = np.random.permutation(num_pos)
+    train = int(85/ 100 * num_pos)
+    valid = int((num_pos - train) / 2)
+    test = num_pos - perm - train
+
+    train_edge = edges[:, perm[:train]]
+    train_weight = w[perm[:train]]
+    valid_edge = edges[:, perm[train:valid]]
+    valid_weight = w[perm[train:valid]]
+    test_edge = edges[:, perm[valid:]]
+    test_weight = w[perm[valid:]]
+
+    data = Data(edge_index = train_edge, edge_weight = train_weight)
+
+    new_edge_index, _ = add_self_loops(edges)
+    neg_edge = negative_sampling(
+        new_edge_index, num_nodes=data.num_nodes,
+        num_neg_samples=valid + test)
+    np.random.seed(123)
+    num_neg = neg_edge.size(1)
+    perm = np.random.permutation(num_neg)
+    val_neg = neg_edge[:, perm[:valid]]
+    test_neg = neg_edge[:, perm[:test]]
+
+    split_edge['train'] = {"edge": train_edge.t(), "weight": train_weight}
+    split_edge['valid'] = {"edge": valid_edge.t(), "weight": valid_weight, "edge_neg": val_neg.t()}
+    split_edge['test'] = {"edge": test_edge.t(), "weight": test_weight, "edge_neg": test_neg.t()}
+
 
 if args.dataset_dir is not None: 
     path = os.path.join(args.dataset_dir, dataset.root) + '_wl{}'.format(args.data_appendix)

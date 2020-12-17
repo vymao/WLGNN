@@ -228,7 +228,7 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
     info = {}
     z = z.tolist()
     node_ids = node_ids.tolist()
-    node_features = node_features.tolist()
+    if node_features: node_features = node_features.tolist()
 
     G = nx.Graph()
     #G.add_nodes_from(node_ids)
@@ -242,8 +242,9 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
         src_z, end_z = z[src], z[end]
         weight = A[src,end]
         weights[(src, end)] = weight
-        f1, f2 = node_features[src], node_features[end]
-        info[(src, end)] = f1 + f2
+        if node_features: 
+            f1, f2 = node_features[src], node_features[end]
+            info[(src, end)] = f1 + f2
         
     A[0, 1] = 0
     A[1, 0] = 0  
@@ -266,14 +267,14 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
     value = 0
     for node in L_node_ids:
         node_ids.append(value) 
-        L_node_features.append(info[node])
+        if node_features: L_node_features.append(info[node])
         w.append(weights[node])
         z1.append(z[node[0]])
         z2.append(z[node[1]])
         index[node] = value
         value += 1
     node_ids.append(value + 1)
-    L_node_features.append(info[(0, 1)])
+    if node_features: L_node_features.append(info[(0, 1)])
     w.append(0)
     z1.append(z[0])
     z2.append(z[1])
@@ -285,7 +286,10 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
         edge_list.append([n1, n2])
         edge_list.append([n2, n1])
 
-    return torch.LongTensor(L_node_features), torch.LongTensor(edge_list), num_nodes, w, z1, z2, torch.LongTensor(node_ids)
+    if len(L_node_features): L_node_features = torch.LongTensor(L_node_features)
+    else: L_node_features = None
+
+    return L_node_features, torch.LongTensor(edge_list), num_nodes, w, z1, z2, torch.LongTensor(node_ids)
 
  
 def extract_enclosing_subgraphs(link_index, A, x, status, num_hops, node_label='drnl', 
