@@ -228,7 +228,7 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
     info = {}
     z = z.tolist()
     node_ids = node_ids.tolist()
-    if node_features: node_features = node_features.tolist()
+    if node_features is not None: node_features = node_features.tolist()
 
     G = nx.Graph()
     #G.add_nodes_from(node_ids)
@@ -242,7 +242,7 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
         src_z, end_z = z[src], z[end]
         weight = A[src,end]
         weights[(src, end)] = weight
-        if node_features: 
+        if node_features is not None: 
             f1, f2 = node_features[src], node_features[end]
             info[(src, end)] = f1 + f2
         
@@ -267,14 +267,14 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
     value = 0
     for node in L_node_ids:
         node_ids.append(value) 
-        if node_features: L_node_features.append(info[node])
+        if node_features is not None: L_node_features.append(info[node])
         w.append(weights[node])
         z1.append(z[node[0]])
         z2.append(z[node[1]])
         index[node] = value
         value += 1
     node_ids.append(value + 1)
-    if node_features: L_node_features.append(info[(0, 1)])
+    if node_features is not None: L_node_features.append(info[(0, 1)])
     w.append(0)
     z1.append(z[0])
     z2.append(z[1])

@@ -34,7 +34,7 @@ warnings.simplefilter('ignore',SparseEfficiencyWarning)
 # An end-to-end deep learning architecture for graph classification, AAAI-18.
 class WLGNN_model(torch.nn.Module):
     def __init__(self, args, train_dataset, dataset, hidden_channels, num_layers, max_z, GNN=GCNConv, k=0.6, 
-                 use_feature=False, node_embedding=None):
+                 use_feature=False, dataset_name=None, node_embedding=None):
         super(WLGNN_model, self).__init__()
 
         self.use_feature = use_feature
@@ -52,7 +52,9 @@ class WLGNN_model(torch.nn.Module):
         self.k = int(k)
 
         self.max_z = max_z
-        self.w_embedding = Embedding(self.max_z, hidden_channels)
+        if "social" in dataset_name: self.w_z = 50000
+        else: self.w_z = max_z 
+        self.w_embedding = Embedding(self.w_z, hidden_channels)
         self.z1_embedding = Embedding(self.max_z, hidden_channels)
         self.z2_embedding = Embedding(self.max_z, hidden_channels)
 

@@ -51,7 +51,7 @@ def evaluate_auc(val_pred, val_true, test_pred, test_true):
 
     return results
 
-def train():
+def train_model():
     model.train()
 
     total_loss = 0
@@ -93,7 +93,7 @@ def train():
 
 
 @torch.no_grad()
-def test():
+def test_model():
     model.eval()
 
     y_pred, y_true = [], []
@@ -307,7 +307,12 @@ else:
     test_edge = edges[:, perm[(train + valid):]]
     test_weight = w[perm[(train + valid):]]
 
-    data = Data(edge_index = train_edge, edge_weight = train_weight, num_nodes = 1899)
+    
+    
+    data_train_edge = torch.cat([train_edge, torch.stack([train_edge[1], train_edge[0]])], 1)
+    data_train_weight = torch.cat([train_weight, train_weight])
+
+    data = Data(edge_index = data_train_edge, edge_weight = data_train_weight, num_nodes = 1899)
 
     new_edge_index, _ = add_self_loops(edges)
     #print(valid)
@@ -332,9 +337,13 @@ if "ogbl" in args.dataset:
         path = os.path.join(args.dataset_dir, dataset.root) + '_wl{}'.format(args.data_appendix)
     else: 
         path = dataset.root + '_wl{}'.format(args.data_appendix)
-else: 
-    path = os.path.join("dataset", "social_network")
-    os.makedirs(path, exist_ok = True)
+else:
+    if args.dataset_dir is not None: 
+        path = os.path.join("dataset", "social_network")
+        path = os.path.join(args.dataset_dir, path) + '.{}'.format(args.data_appendix)
+    else:  
+        path = os.path.join("dataset", "social_network") + '.{}'.format(args.data_appendix)
+        os.makedirs(path, exist_ok = True)
 
 
 use_coalesce = True
@@ -407,13 +416,15 @@ if args.multi_gpu: test_loader = DataListLoader(test_dataset, batch_size=args.ba
 else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
                      num_workers=args.num_workers)
 
+if "social" in args.dataset: dataset = None
+
 for run in range(args.runs):
     emb = None
     if args.use_orig_graph: model = DGCNN(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                       max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                       node_embedding=emb)
     else: model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
-                      max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
+                      max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, dataset_name=args.dataset, 
                       node_embedding=emb)
 
     wandb.watch(model)
@@ -446,10 +457,10 @@ for run in range(args.runs):
         exit()
    
     for epoch in range(start_epoch, start_epoch + args.epochs):
-        loss = train()
+        loss = train_model()
 
         if epoch % args.eval_steps == 0:
-            results = test()
+            results = test_model()
 
             if epoch % args.log_steps == 0:
                 model_name = os.path.join(
