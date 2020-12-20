@@ -51,7 +51,7 @@ def evaluate_auc(val_pred, val_true, test_pred, test_true):
 
     return results
 
-def train():
+def train_model():
     model.train()
 
     total_loss = 0
@@ -91,9 +91,11 @@ def train():
 
     return total_loss / len(train_dataset)
 
+def normalized_RMSE(val_true, val_pred):
+    return mean_squared_error(val_true, val_pred, squared = False) / val_pred.mean().item()
 
 @torch.no_grad()
-def test():
+def test_model():
     model.eval()
 
     y_pred, y_true = [], []
@@ -164,7 +166,8 @@ def test():
         print("Found in test prediction")
 
     results = {}
-    results['MSE'] = (mean_squared_error(val_true, val_pred, squared = False), mean_squared_error(test_true, test_pred, squared = False))
+    #results['MSE'] = (mean_squared_error(val_true, val_pred, squared = False), mean_squared_error(test_true, test_pred, squared = False))
+    results['MSE'] = (normalized_RMSE(val_true, val_pred), normalized_RMSE(test_true, test_pred))
     return results
 
 
@@ -307,7 +310,12 @@ else:
     test_edge = edges[:, perm[(train + valid):]]
     test_weight = w[perm[(train + valid):]]
 
-    data = Data(edge_index = train_edge, edge_weight = train_weight, num_nodes = 1899)
+    
+    
+    data_train_edge = torch.cat([train_edge, torch.stack([train_edge[1], train_edge[0]])], 1)
+    data_train_weight = torch.cat([train_weight, train_weight])
+
+    data = Data(edge_index = data_train_edge, edge_weight = data_train_weight, num_nodes = 1899)
 
     new_edge_index, _ = add_self_loops(edges)
     #print(valid)
@@ -332,9 +340,13 @@ if "ogbl" in args.dataset:
         path = os.path.join(args.dataset_dir, dataset.root) + '_wl{}'.format(args.data_appendix)
     else: 
         path = dataset.root + '_wl{}'.format(args.data_appendix)
-else: 
-    path = os.path.join("dataset", "social_network")
-    os.makedirs(path, exist_ok = True)
+else:
+    if args.dataset_dir is not None: 
+        path = os.path.join("dataset", "social_network")
+        path = os.path.join(args.dataset_dir, path) + '.{}'.format(args.data_appendix)
+    else:  
+        path = os.path.join("dataset", "social_network") + '.{}'.format(args.data_appendix)
+        os.makedirs(path, exist_ok = True)
 
 
 use_coalesce = True
@@ -407,13 +419,15 @@ if args.multi_gpu: test_loader = DataListLoader(test_dataset, batch_size=args.ba
 else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
                      num_workers=args.num_workers)
 
+if "social" in args.dataset: dataset = None
+
 for run in range(args.runs):
     emb = None
     if args.use_orig_graph: model = DGCNN(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
                       max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                       node_embedding=emb)
     else: model = WLGNN_model(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 
-                      max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
+                      max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, dataset_name=args.dataset, 
                       node_embedding=emb)
 
     wandb.watch(model)
@@ -432,8 +446,24 @@ for run in range(args.runs):
             print(f'SortPooling k is set to {model.k}', file=f)
 
     start_epoch = 1
+
     if args.multi_gpu: model = DataParallel(model)
     model = model.to(device)
+
+    if args.continue_from is not None:
+        model.load_state_dict(
+            torch.load(os.path.join(args.res_dir, 
+                'model_checkpoint{}.pth'.format(args.continue_from)))
+        )
+        optimizer.load_state_dict(
+            torch.load(os.path.join(args.res_dir, 
+                'optimizer_checkpoint{}.pth'.format(args.continue_from)))
+        )
+        start_epoch = args.continue_from + 1
+        args.epochs -= args.continue_from
+
+    #if args.multi_gpu: model = DataParallel(model)
+    #model = model.to(device)
     # Training starts
     if args.only_test:
         results = test()
@@ -446,10 +476,10 @@ for run in range(args.runs):
         exit()
    
     for epoch in range(start_epoch, start_epoch + args.epochs):
-        loss = train()
+        loss = train_model()
 
         if epoch % args.eval_steps == 0:
-            results = test()
+            results = test_model()
 
             if epoch % args.log_steps == 0:
                 model_name = os.path.join(

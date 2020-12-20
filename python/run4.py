@@ -91,6 +91,8 @@ def train_model():
 
     return total_loss / len(train_dataset)
 
+def normalized_RMSE(val_true, val_pred):
+    return mean_squared_error(val_true, val_pred, squared = False) / val_pred.mean().item()
 
 @torch.no_grad()
 def test_model():
@@ -164,7 +166,8 @@ def test_model():
         print("Found in test prediction")
 
     results = {}
-    results['MSE'] = (mean_squared_error(val_true, val_pred, squared = False), mean_squared_error(test_true, test_pred, squared = False))
+    #results['MSE'] = (mean_squared_error(val_true, val_pred, squared = False), mean_squared_error(test_true, test_pred, squared = False))
+    results['MSE'] = (normalized_RMSE(val_true, val_pred), normalized_RMSE(test_true, test_pred))
     return results
 
 
@@ -443,8 +446,24 @@ for run in range(args.runs):
             print(f'SortPooling k is set to {model.k}', file=f)
 
     start_epoch = 1
+
     if args.multi_gpu: model = DataParallel(model)
     model = model.to(device)
+
+    if args.continue_from is not None:
+        model.load_state_dict(
+            torch.load(os.path.join(args.res_dir, 
+                'model_checkpoint{}.pth'.format(args.continue_from)))
+        )
+        optimizer.load_state_dict(
+            torch.load(os.path.join(args.res_dir, 
+                'optimizer_checkpoint{}.pth'.format(args.continue_from)))
+        )
+        start_epoch = args.continue_from + 1
+        args.epochs -= args.continue_from
+
+    #if args.multi_gpu: model = DataParallel(model)
+    #model = model.to(device)
     # Training starts
     if args.only_test:
         results = test()
