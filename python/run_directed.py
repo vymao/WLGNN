@@ -295,14 +295,25 @@ train_data['head'] = torch.LongTensor(new_head)
 train_data['tail'] = torch.LongTensor(new_tail)
 train_data['node_class'] = node_type
 
-print(max(new_head))
-print(max(new_tail))
+train_data['relation'] += 1
+
+G = nx.MultiDiGraph()
+edges = torch.stack(train_data['head'], train_data['tail']).t()
+#labeled_attr = [{"class": i} for i in train_data['relation']]
+att = torch.reshape(train_data['relation'], (len(train_data['relation'], 1)))
+edges = torch.hstack(edges, att)
+#labeled_edges = []
+#for i in range(len(edges)): 
+#    edge = edges[i]
+#    labeled_edges.append([edge[0], edge[1], labeled_attr[i]])
+G.add_edges_from(edges)
 
 dataset_class = 'Directed_Dataset' 
 train_dataset = eval(dataset_class)(
     path, 
     train_data, 
     split_edge, 
+    G, 
     num_nodes,
     data['num_nodes_dict'],
     alpha=args.alpha,
@@ -320,6 +331,7 @@ val_dataset = eval(dataset_class)(
     path, 
     train_data, 
     split_edge, 
+    G,
     num_nodes,
     data['num_nodes_dict'],
     alpha=args.alpha,
@@ -337,6 +349,7 @@ test_dataset = eval(dataset_class)(
     path, 
     train_data, 
     split_edge, 
+    G,
     num_nodes,
     data['num_nodes_dict'],
     alpha=args.alpha,

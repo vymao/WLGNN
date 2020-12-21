@@ -25,6 +25,8 @@ from torch_scatter import scatter_min
 import glob
 from torch_geometric.data.makedirs import makedirs
 
+from DataSet import get_pos_neg_edges
+
 class Directed_Dataset(Dataset):
     r"""
     Nodes represent documents and edges represent citation links.
@@ -44,7 +46,7 @@ class Directed_Dataset(Dataset):
             being saved to disk. (default: :obj:`None`)
     """
 
-    def __init__(self, root, data, split_edge, num_nodes, node_dict, alpha, num_hops, percent, input_dim = 16, 
+    def __init__(self, root, data, split_edge, A, num_nodes, node_dict, alpha, num_hops, percent, input_dim = 16, 
                     split='train', ratio_per_hop=1.0, max_nodes_per_hop=None, adj_type=None, transform=None, pre_transform=None):
         self.data = data
         self.split_edge = split_edge
@@ -56,6 +58,7 @@ class Directed_Dataset(Dataset):
         self.split = split
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
+        self.A = A
 
         if split != 'train':
             current_data= split_edge[split]
@@ -84,7 +87,7 @@ class Directed_Dataset(Dataset):
         self.x = data['node_class']
         self.data['relation'] = self.data['relation'] + 1
 
-        pos_edge, neg_edge = get_pos_neg_edges(split, self.split_edge, 
+        pos_edge, pos_label, neg_edge = get_pos_neg_edges(split, self.split_edge, 
                                                num_nodes = self.num_nodes, 
                                                percent = self.percent)
 
@@ -94,9 +97,11 @@ class Directed_Dataset(Dataset):
         print()
         print(max(data['relation'].tolist()))
 
-        self.A = ssp.csr_matrix(
-        (self.data['relation'].tolist(), (self.data['head'], self.data['tail'])), 
-        shape=(self.num_nodes, self.num_nodes))
+        #self.A = ssp.csr_matrix(
+        #(self.data['relation'].tolist(), (self.data['head'], self.data['tail'])), 
+        #shape=(self.num_nodes, self.num_nodes))
+
+
 
         super(Directed_Dataset, self).__init__(root, transform, pre_transform)
 
@@ -114,14 +119,14 @@ class Directed_Dataset(Dataset):
             #print((src, dst))
             #print(f'Num_src_out_edge: {self.split_edge[self.split]["head"][self.split_edge[self.split]["head"] == src].size()}')
             #print(f'Num_dst_out_edge: {self.split_edge[self.split]["head"][self.split_edge[self.split]["head"] == dst].size()}')
-            y = self.A[src, dst]
+            y = list(self.A[src][dst])[0]
 
             if self.labels[idx]: status = "pos"
             else: status = "neg"
 
             tmp = k_hop_subgraph(src, dst, self.num_hops, self.A, status, self.ratio_per_hop, 
                                  self.max_nodes_per_hop, node_features=self.x, directed=True)
-            L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_pyg_graph(*tmp, directed=True)
+            L_node_features, L_node_weights, L_edges,  L_num_nodes, L_node_ids = construct_pyg_graph(*tmp, directed=True, data=self.data)
     
             data = citation_datasets(L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes, y, self.alpha, self.adj_type)        
             data = data if self.pre_transform is None else self.pre_transform(data)
@@ -186,40 +191,3 @@ def citation_datasets(features, edges,  num_nodes, node_ids, node_classes, label
         sys.exit()
     
     return data
-
-def load_npz_dataset(node_features, edges,  num_nodes, node_ids):
-    """Load a graph from a Numpy binary file.
-
-    Parameters
-    ----------
-    file_name : str
-        Name of the file to load.
-
-    Returns
-    -------
-    graph : dict
-        Dictionary that contains:
-            * 'A' : The adjacency matrix in sparse matrix format
-            * 'X' : The attribute matrix in sparse matrix format
-            * 'z' : The ground truth class labels
-            * Further dictionaries mapping node, class and attribute IDs
-
-    """
-    with np.load(file_name, allow_pickle=True) as loader:
-        loader = dict(loader)
-        edge_index = loader['adj_indices'].copy()
-        A = sp.csr_matrix((loader['adj_data'], loader['adj_indices'],
-                           loader['adj_indptr']), shape=loader['adj_shape'])
-
-        X = sp.csr_matrix((loader['attr_data'], loader['attr_indices'],
-                           loader['attr_indptr']), shape=loader['attr_shape'])
-
-        z = loader.get('labels')
-
-        graph = {
-            'A': A,
-            'X': X,
-            'z': z
-        }
-
-        return graph
