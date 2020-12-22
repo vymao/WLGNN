@@ -91,8 +91,11 @@ def train_model():
 
     return total_loss / len(train_dataset)
 
-def normalized_RMSE(val_true, val_pred):
-    return mean_squared_error(val_true, val_pred, squared = False) / val_pred.mean().item()
+def normalized_RMSE(val_true, val_pred, norm_type):
+    mse = mean_squared_error(val_true, val_pred, squared = False)
+    if norm_type == "mean": return mse / val_pred.mean().item()
+    elif norm_type = "std_dev": return mse / torch.std(val_pred).item()
+    else: return mse
 
 @torch.no_grad()
 def test_model():
@@ -167,7 +170,7 @@ def test_model():
 
     results = {}
     #results['MSE'] = (mean_squared_error(val_true, val_pred, squared = False), mean_squared_error(test_true, test_pred, squared = False))
-    results['MSE'] = (normalized_RMSE(val_true, val_pred), normalized_RMSE(test_true, test_pred))
+    results['MSE'] = (normalized_RMSE(val_true, val_pred, args.normalize), normalized_RMSE(test_true, test_pred, args.normalize))
     return results
 
 
@@ -236,6 +239,7 @@ def parse_args():
                         help="whether to use multi-gpu parallelism")
     parser.add_argument('--pos_edge_test_only', action='store_true', 
                         help='whether to only test against positive edge weights or all edges')
+    parser.add_argument('--normalize', type=str, default="mean")
     return parser.parse_args()
 
 
