@@ -20,8 +20,8 @@ def neighbors(fringe, A):
     # where A is a scipy csr adjacency matrix.
     res = set()
     for node in fringe:
-        out_nodes = np.array(A.out_edges(node))[1]
-        in_nodes = np.array(A.in_edges(node))[1]
+        out_nodes = np.array(list(A.out_edges(node)))[:, 1]
+        in_nodes = np.array(list(A.in_edges(node)))[:, 0]
         
         nei = out_nodes.tolist() + in_nodes.tolist()
         nei = set(nei)
@@ -30,7 +30,7 @@ def neighbors(fringe, A):
 
 
 def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0, 
-                   max_nodes_per_hop=None, node_features=None, directed=False, use_orig_graph=False):
+                   max_nodes_per_hop=None, node_features=None, directed=False):
     # Extract the k-hop enclosing subgraph around link (src, dst) from A. 
     nodes = [src, dst]
     dists = [0, 0]
@@ -53,15 +53,12 @@ def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0,
     subgraph = A.subgraph(nodes)
     #subgraph = A[nodes, :][:, nodes]
 
-    if node_features is not None:
-        node_features = node_features[nodes]
+    #if node_features is not None:
+    #    node_features = node_features[nodes]
 
-    if status == "pos": list(A[src][dst])[0]
-    else: y = 0
-    
     #print(f'k-hop num_nodes: {len(nodes)}')
 
-    return nodes, subgraph, dists, node_features, y
+    return nodes, subgraph, dists, node_features
 
 
 def drnl_node_labeling(adj, src, dst):
@@ -93,109 +90,45 @@ def drnl_node_labeling(adj, src, dst):
     z[torch.isnan(z)] = 0.
     z[torch.isinf(z)] = 2.
 
-    return z.to(torch.long)
+    return z
 
 
-def drnl_node_labeling_2(adj, src, dst, label):
-    # Double-radius node labeling (DRNL).
-    src, dst = (dst, src) if src > dst else (src, dst)
-
-    A_tmp = adj.deepcopy()
-    A_tmp.remove_edges_from(A_tmp.out_edges(dst, keys = True))
-    A_tmp.remove_edges_from(A_temp.in_edges(dst, keys = True))
-
-    dist2src = single_source_shortest_path(A_tmp, src)
-    src_dict = {}
-    for key in A_tmp.nodes(): 
-        if key in dist2src: src_dict[key] = len(dist2src[key])
-        else: src_dict[key] = float('inf')
-    src_dict[dst] = 1
-    dist2src = np.insert(dist2src, dst, 0, axis=0)
-    dist2src = torch.from_numpy(dist2src)
-
-    idx = list(range(dst)) + list(range(dst + 1, adj.shape[0]))
-    adj_wo_dst = adj[idx, :][:, idx]
-
-    dist2dst = shortest_path(adj_wo_src, directed=False, unweighted=True, indices=dst-1)
-    dist2dst = np.insert(dist2dst, src, 0, axis=0)
-    dist2dst = torch.from_numpy(dist2dst)
-
-    dist = dist2src + dist2dst
-    dist_over_2, dist_mod_2 = dist // 2, dist % 2
-
-    z = 1 + torch.min(dist2src, dist2dst)
-    z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1)
-    z[src] = 1.
-    z[dst] = 1.
-    z[torch.isnan(z)] = 0.
-
-    return z.to(torch.long)
-
-def construct_pyg_graph(node_ids, adj, dists, node_features, y, src, dst, label, node_label='drnl', use_orig_A=False, directed=False, data=None):
+def construct_pyg_graph(node_ids, adj, dists, node_features, src, dst, label):
     # Construct a pytorch_geometric graph from a scipy csr adjacency matrix.
     #u, v, r = ssp.find(adj)
     num_nodes = len(adj.nodes())
     
-    node_ids = torch.LongTensor(node_ids)
+    #node_ids = torch.LongTensor(node_ids)
     #u, v = torch.LongTensor(u), torch.LongTensor(v)
 
     #r = torch.LongTensor(r)
     #edge_index = torch.stack([u, v], 0)
     #edge_weight = r.to(torch.float)
 
-    y = torch.tensor([y])
-    if use_orig_graph:
-        u, v, r = ssp.find(adj)
-        num_nodes = adj.shape[0]
-
-        u, v = torch.LongTensor(u), torch.LongTensor(v)
-        r = torch.LongTensor(r)
-        edge_index = torch.stack([u, v], 0)
-        edge_weight = r.to(torch.float)
-
-        if node_label == 'drnl':
-            z = drnl_node_labeling(adj, 0, 1)
-        elif node_label == 'hop':
-            z = torch.tensor(dists)
-        data = Data(node_features, edge_index, edge_weight=edge_weight, y=y, z=z,
-                    node_id=node_ids, num_nodes=num_nodes)
-        return data
-    elif not directed: 
-        if node_label == 'drnl':
-            z = drnl_node_labeling(adj, 0, 1)
-        elif node_label == 'hop':
-            z = torch.tensor(dists)
-
-        L_node_features, L_edges,  L_num_nodes, w, z1, z2, L_node_ids = construct_line_graph_undirected(node_ids, adj, z, node_features)
-        edge_weight = torch.ones(len(L_edges))
-        #print(L_edges)
-        data = Data(L_node_features, L_edges.t(), edge_weight=edge_weight, y=y, w=torch.LongTensor(w), z1=torch.LongTensor(z1), 
-            z2=torch.LongTensor(z2), node_id=L_node_ids, num_nodes=len(L_node_ids))
-        return data
-    else: 
-        csr_adj = to_scipy_sparse_matrix(adj, node_list = node_ids.tolist())
-        z = drnl_node_labeling(csr_adj, 0, 1)
-        L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, csr_adj, adj, node_features, 
-                                                                                                        z, src, dst, label)
-        
-        return L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes
+    csr_adj = to_scipy_sparse_matrix(adj, node_list = node_ids)
+    z = drnl_node_labeling(csr_adj, 0, 1)
+    node_dict = dict(zip(node_ids, z))
+    L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, csr_adj, adj, node_features, 
+                                                                                                    z, src, dst, label, node_dict)
+    
+    return L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes
 
 
-def construct_line_graph_directed(node_ids, A, nx_A, node_features, z, s, d, label):
+def construct_line_graph_directed(node_ids, A, nx_A, node_features, z, s, d, label, node_dict):
     #u, v, r = ssp.find(A)
     #print(f'max_weight: {max(r)}')
     
     #print(f'num_edges_khop: {len(u)}')
     #print(f'num_nodes_khop: {node_ids.size()}')
 
-    node_ids = node_ids.tolist()
+    #node_ids = node_ids.tolist()
     node_features = node_features.tolist()
 
     G = nx_A
     G.remove_edges_from([(s, d, label)])
     #G.add_nodes_from(node_ids)
     #rows, cols = A.nonzero()
-    A_edges_forward = list(G.edges())
+    A_edges_forward = list(G.edges(keys = True))
     #A_edges_forward = list(zip(u, v))  
     #A_edges_reverse = list(zip(v, u))
 
@@ -233,9 +166,10 @@ def construct_line_graph_directed(node_ids, A, nx_A, node_features, z, s, d, lab
         if node_features[head] != node_features[tail]: 
             reverse_edges.append((tail, head, weight))
 
+    G.add_edges_from(reverse_edges)
+
     #G.add_edges_from(A_edges_forward)
     #G.add_edges_from(A_edges_reverse)
-    
 
     L = nx.line_graph(G)
     num_nodes = L.number_of_nodes()
@@ -250,9 +184,9 @@ def construct_line_graph_directed(node_ids, A, nx_A, node_features, z, s, d, lab
     value = 0
     for node in L_node_ids:
         node_ids.append(value) 
-        node_feature = (node_features[node[0]], node_features[node[1]])
-        weight_vector = [0] * 52 + [node[2] in A_edges_forward]
-        weight_vector[label] = 1
+        node_feature = [node_features[node[0]], node_features[node[1]], node_dict[node[0]], node_dict[node[1]]]
+        weight_vector = [0] * 52 + [node in A_edges_forward]
+        weight_vector[node[2]] = 1
         L_node_weights.append(weight_vector)
         L_node_features.append(node_feature)
 
@@ -265,7 +199,7 @@ def construct_line_graph_directed(node_ids, A, nx_A, node_features, z, s, d, lab
         n1, n2 = index[v1], index[v2]
         edge_list.append([n1, n2])
 
-    return torch.LongTensor(L_node_features), torch.LongTensor(L_node_weights), torch.LongTensor(edge_list), num_nodes, torch.LongTensor(node_ids)
+    return torch.LongTensor(L_node_features), torch.LongTensor(L_node_weights), torch.LongTensor(edge_list), num_nodes, node_ids
 
 
  

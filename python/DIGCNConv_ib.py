@@ -52,8 +52,8 @@ class Sparse_Three_Sum(torch.nn.Module):
             k = max(10, k)
         self.k = int(k)
 
-        max_z = 100
-        self.embedding = Embedding(max_z, input_dim)
+        self.class_embedding = Embedding(10, input_dim)
+        self.z_embedding = Embedding(1000, input_dim)
         self.word2idx = {
             "disease": 1,
             "function": 2,
@@ -84,12 +84,17 @@ class Sparse_Three_Sum(torch.nn.Module):
         self.ib3.reset_parameters()
 
     def forward(self, data):
-        x, edge_index, edge_weight, node_class = data.x, data.edge_index, data.edge_weight, data.node_class
+        x, edge_index, edge_weight, node_weights = data.x, data.edge_index, data.edge_weight, data.node_weights
         edge_index2, edge_weight2 = data.edge_index2, data.edge_weight2
 
-        src, end = node_class.t()
-        src, end = embedding(src), embedding(end)
-        x = torch.cat([x, src, end], 1)
+        src_class = class_embedding(node_weights[:,0])
+        dst_class = class_emebedding(node_weights[:, 1])
+        src_z = z_embedding(node_weights[:, 2])
+        dst_z = z_embedding(node_weights[:, 3])
+
+        #src, end = node_class.t()
+        #src, end = embedding(src), embedding(end)
+        x = torch.cat([x, src_class, dist_class, src_z, dst_z], 1)
         
         x0,x1,x2 = self.ib1(x, edge_index, edge_weight, edge_index2, edge_weight2)
         x0 = F.dropout(x0, p=self.dropout, training=self.training)

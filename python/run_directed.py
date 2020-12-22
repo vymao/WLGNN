@@ -60,7 +60,7 @@ def train():
         if args.multi_gpu: y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
         else: y = data.y.to(torch.float)
 
-        loss = CrossEntropyLoss()(out, y)
+        loss = BCEWithLogitsLoss()(out, y)
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * len(data)
@@ -149,6 +149,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Dataset Creation')
 
     parser.add_argument('--dataset', type=str, default='ogbl-biokg')
+    parser.add_argument('--dataset_dir', type=str, default=None)
+    parser.add_argument('--run_name', type=str, default=None)
     # GNN settings
     parser.add_argument('--model', type=str, default='DGCNN')
     parser.add_argument('--sortpool_k', type=float, default=0.6)
@@ -224,6 +226,11 @@ def parse_args():
 ###SCRIPT START######
 
 args = parse_args()
+
+if args.run_name: 
+    wandb.run.name = args.run_name
+    wandb.run.save()
+
 wandb.config.update(args)
 
 dataset = PygLinkPropPredDataset(name=args.dataset)
@@ -251,6 +258,14 @@ if args.use_valedges_as_input:
     data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
     val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
     data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
+
+
+if args.dataset_dir is not None: 
+    path = os.path.join("dataset", "ogbl-biokg")
+    path = os.path.join(args.dataset_dir, path) + '.{}'.format(args.data_appendix)
+else:  
+    path = os.path.join("dataset", "ogbl-biokg") + '.{}'.format(args.data_appendix)
+    os.makedirs(path, exist_ok = True)
 
 path = dataset.root + '_wl.{}'.format(args.data_appendix)
 use_coalesce = True
