@@ -8,7 +8,6 @@ from DIGCNConv import DIGCNConv
 from torch_scatter import scatter_add
 from torch_geometric.data import Data
 from torch_geometric.utils import to_undirected, is_undirected, to_networkx
-from train_eval import run
 
 import scipy.sparse as ssp
 from torch.nn import ModuleList, Linear, Conv1d, MaxPool1d, Embedding

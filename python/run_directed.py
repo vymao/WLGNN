@@ -40,8 +40,9 @@ from scipy.sparse import SparseEfficiencyWarning
 warnings.simplefilter('ignore',SparseEfficiencyWarning)
 
 import gc
-from DataSet import *
-from WLGNN import *
+#from DataSet import *
+#from WLGNN import *
+from DIGCNConv_ib import *
 from DirectedDataset import *
 
 def train():
@@ -167,6 +168,8 @@ def parse_args():
                         help="whether to use raw node features as GNN input")
     parser.add_argument('--use_edge_weight', action='store_true', 
                         help="whether to consider edge weight in GNN")
+    parser.add_argument('--skip_data_processing', action='store_true')
+    parser.add_argument('--skip_graph_generation', action='store_true')
     # Training settings
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=20)
@@ -269,7 +272,7 @@ else:
 
 path = dataset.root + '_wl.{}'.format(args.data_appendix)
 use_coalesce = True
-
+print("Converting node indices...")
 num_nodes_dict = data['num_nodes_dict']
 num_nodes = 0
 for key in num_nodes_dict.keys(): 
@@ -311,17 +314,22 @@ train_data['tail'] = torch.LongTensor(new_tail)
 train_data['node_class'] = node_type
 
 train_data['relation'] += 1
-
-G = nx.MultiDiGraph()
-edges = torch.stack(train_data['head'], train_data['tail']).t()
-#labeled_attr = [{"class": i} for i in train_data['relation']]
-att = torch.reshape(train_data['relation'], (len(train_data['relation'], 1)))
-edges = torch.hstack(edges, att)
-#labeled_edges = []
-#for i in range(len(edges)): 
-#    edge = edges[i]
-#    labeled_edges.append([edge[0], edge[1], labeled_attr[i]])
-G.add_edges_from(edges)
+#print(len(train_data['head'][train_data['head'] == 30622]))
+print("Finished")
+if not args.skip_graph_generation: 
+    G = nx.MultiDiGraph()
+    edges = torch.stack([train_data['head'], train_data['tail']]).t()
+    #labeled_attr = [{"class": i} for i in train_data['relation']]
+    att = torch.reshape(train_data['relation'], (len(train_data['relation']), 1))
+    edges = torch.hstack([edges, att])
+    #labeled_edges = []
+    #for i in range(len(edges)): 
+    #    edge = edges[i]
+    #    labeled_edges.append([edge[0], edge[1], labeled_attr[i]])
+    G.add_edges_from(edges.tolist())
+else: 
+    print("Skipping graph generation")
+    G = None
 
 dataset_class = 'Directed_Dataset' 
 train_dataset = eval(dataset_class)(
@@ -339,6 +347,7 @@ train_dataset = eval(dataset_class)(
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
     adj_type = args.adj_type,
+    skip_data_processing = args.skip_data_processing,
 ) 
 
 dataset_class = 'Directed_Dataset' 
@@ -351,12 +360,13 @@ val_dataset = eval(dataset_class)(
     data['num_nodes_dict'],
     alpha=args.alpha,
     num_hops=args.num_hops, 
-    percent=args.train_percent, 
+    percent=args.val_percent, 
     input_dim=args.node_embed_dim,
     split='valid', 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
     adj_type = args.adj_type,
+    skip_data_processing = args.skip_data_processing,
 )
 
 dataset_class = 'Directed_Dataset' 
@@ -369,12 +379,13 @@ test_dataset = eval(dataset_class)(
     data['num_nodes_dict'],
     alpha=args.alpha,
     num_hops=args.num_hops, 
-    percent=args.train_percent,
+    percent=args.test_percent,
     input_dim=args.node_embed_dim, 
     split='test', 
     ratio_per_hop=args.ratio_per_hop, 
     max_nodes_per_hop=args.max_nodes_per_hop, 
     adj_type = args.adj_type,
+    skip_data_processing = args.skip_data_processing,
 )
 print('Using', torch.cuda.device_count(), 'GPUs!')
 

@@ -94,7 +94,7 @@ def train_model():
 def normalized_RMSE(val_true, val_pred, norm_type):
     mse = mean_squared_error(val_true, val_pred, squared = False)
     if norm_type == "mean": return mse / val_pred.mean().item()
-    elif norm_type = "std_dev": return mse / torch.std(val_pred).item()
+    elif norm_type == "std_dev": return mse / torch.std(val_pred).item()
     else: return mse
 
 @torch.no_grad()

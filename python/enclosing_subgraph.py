@@ -233,6 +233,7 @@ def construct_line_graph_undirected(node_ids, A, z, node_features):
     G = nx.Graph()
     #G.add_nodes_from(node_ids)
     rows, cols = A.nonzero()
+    print(len(rows))
     A_edges = list(zip(rows,cols))
     #print(A_edges)
 

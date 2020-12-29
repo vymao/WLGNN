@@ -4,6 +4,7 @@ import random
 import numpy as np
 import scipy.sparse as ssp
 from networkx.algorithms.shortest_paths.unweighted import single_source_shortest_path
+from scipy.sparse.csgraph import shortest_path
 import torch
 from torch_sparse import spspmm
 import torch_geometric
@@ -20,8 +21,11 @@ def neighbors(fringe, A):
     # where A is a scipy csr adjacency matrix.
     res = set()
     for node in fringe:
-        out_nodes = np.array(list(A.out_edges(node)))[:, 1]
-        in_nodes = np.array(list(A.in_edges(node)))[:, 0]
+        #print(node)
+        out_nodes = np.array(list(A.out_edges(node)))
+        if len(out_nodes): out_nodes = out_nodes[:, 1]
+        in_nodes = np.array(list(A.in_edges(node)))
+        if len(in_nodes): in_nodes = in_nodes[:, 0]
         
         nei = out_nodes.tolist() + in_nodes.tolist()
         nei = set(nei)
@@ -31,11 +35,16 @@ def neighbors(fringe, A):
 
 def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0, 
                    max_nodes_per_hop=None, node_features=None, directed=False):
-    # Extract the k-hop enclosing subgraph around link (src, dst) from A. 
+    # Extract the k-hop enclosing subgraph around link (src, dst) from A.
+    #print("k-hop")
+    #print(len(G.edges())) 
     nodes = [src, dst]
     dists = [0, 0]
     visited = set([src, dst])
     fringe = set([src, dst])
+    #print("hi")
+    #print(len(A[30622]))
+    #print("bye")
     for dist in range(1, num_hops+1):
         fringe = neighbors(fringe, A)
         fringe = fringe - visited
@@ -50,7 +59,7 @@ def k_hop_subgraph(src, dst, num_hops, A, status, sample_ratio=1.0,
         nodes = nodes + list(fringe)
         dists = dists + [dist] * len(fringe)
 
-    subgraph = A.subgraph(nodes)
+    subgraph = A.subgraph(nodes).copy()
     #subgraph = A[nodes, :][:, nodes]
 
     #if node_features is not None:
@@ -105,7 +114,7 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, src, dst, label):
     #edge_index = torch.stack([u, v], 0)
     #edge_weight = r.to(torch.float)
 
-    csr_adj = to_scipy_sparse_matrix(adj, node_list = node_ids)
+    csr_adj = to_scipy_sparse_matrix(adj, nodelist = node_ids)
     z = drnl_node_labeling(csr_adj, 0, 1)
     node_dict = dict(zip(node_ids, z))
     L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, csr_adj, adj, node_features, 
@@ -170,8 +179,21 @@ def construct_line_graph_directed(node_ids, A, nx_A, node_features, z, s, d, lab
 
     #G.add_edges_from(A_edges_forward)
     #G.add_edges_from(A_edges_reverse)
+    #print("before")
+    #print(G.number_of_nodes())
+
+    if len(A_edges_forward) > 2000: 
+        edges = random.sample(A_edges_forward, 2000)
+        H = nx.MultiDiGraph()
+        H.add_edges_from(edges)
+        G = H
 
     L = nx.line_graph(G)
+
+    #if L.number_of_nodes() > 3000: 
+    #    sampled_nodes = random.sample(list(L.nodes()), 3000)
+    #    L = L.subgraph(sampled_nodes).copy()
+    #print(L.number_of_nodes())
     num_nodes = L.number_of_nodes()
        
     L_node_ids = list(L.nodes)

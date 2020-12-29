@@ -11,13 +11,12 @@ from torch_geometric.data import Data
 from torch_geometric.utils import to_undirected, is_undirected, to_networkx
 from networkx.algorithms.components import is_weakly_connected
 
-from torch_geometric.utils import add_remaining_self_loops, add_self_loops, remove_self_loops
+from torch_geometric.utils import add_remaining_self_loops, add_self_loops, remove_self_loops, negative_sampling
 from torch_scatter import scatter_add
 import scipy
 from torch_geometric.data import InMemoryDataset, Dataset
 from get_adj import get_undirected_adj,get_pr_directed_adj,get_appr_directed_adj,get_second_directed_adj
-from DataSet import get_pos_neg_edges
-from enclosing_subgraph import *
+from enclosing_subgraph_directed import *
 
 from torch_sparse import coalesce
 from torch_scatter import scatter_min
@@ -45,7 +44,8 @@ class Directed_Dataset(Dataset):
     """
 
     def __init__(self, root, data, split_edge, A, num_nodes, node_dict, alpha, num_hops, percent, input_dim = 16, 
-                    split='train', ratio_per_hop=1.0, max_nodes_per_hop=None, adj_type=None, transform=None, pre_transform=None):
+                    split='train', ratio_per_hop=1.0, max_nodes_per_hop=None, adj_type=None, transform=None, pre_transform=None, 
+                    skip_data_processing=False):
         self.data = data
         self.split_edge = split_edge
         self.alpha = alpha
@@ -57,8 +57,8 @@ class Directed_Dataset(Dataset):
         self.ratio_per_hop = ratio_per_hop
         self.max_nodes_per_hop = max_nodes_per_hop
         self.A = A
-
-        if split != 'train':
+        print(f"Processing {split} dataset...")
+        if split != 'train' and not skip_data_processing: 
             current_data= split_edge[split]
             total = 0
             skip = {}
@@ -67,43 +67,44 @@ class Directed_Dataset(Dataset):
                 total += node_dict[key]
 
             new_head, new_tail = [], []
-            for edge in range(len(current_data['relation'])): 
+            for edge in tqdm(range(len(current_data['relation']))): 
                 new_head.append(current_data['head'][edge] + skip[current_data['head_type'][edge]])
                 new_tail.append(current_data['tail'][edge] + skip[current_data['tail_type'][edge]])
             
-            current_data['head'] = new_head
-            current_data['tail'] = new_tail
+            current_data['head'] = torch.LongTensor(new_head)
+            current_data['tail'] = torch.LongTensor(new_tail)
             
             new_head, new_tail = [], [] 
-            for edge in range(len(current_data['relation'])): 
-                new_head.append(current_data['head_neg'][edge] + skip[current_data['head_type'][edge]])
-                new_tail.append(current_data['tail_neg'][edge] + skip[current_data['tail_type'][edge]])
+            for edge in tqdm(range(len(current_data['relation']))): 
+                new_head += current_data['head_neg'][edge] + skip[current_data['head_type'][edge]]
+                new_tail += current_data['tail_neg'][edge] + skip[current_data['tail_type'][edge]]
             
-            current_data['head_neg'] = new_head
-            current_data['tail_neg'] = new_tail
+            current_data['head_neg'] = torch.LongTensor(new_head)
+            current_data['tail_neg'] = torch.LongTensor(new_tail)
 
             current_data['relation'] += 1
+        
+        if not skip_data_processing: 
+            self.x = data['node_class']
+            #self.data['relation'] = self.data['relation'] + 1
 
-        self.x = data['node_class']
-        #self.data['relation'] = self.data['relation'] + 1
-
-        pos_edge, pos_label, neg_edge, neg_label = get_pos_neg_edges(split, self.split_edge, 
+            pos_edge, pos_label, neg_edge, neg_label = get_pos_neg_edges(split, self.split_edge, 
                                                num_nodes = self.num_nodes, 
                                                percent = self.percent)
 
-        self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
-        self.relations = torch.cat([pos_label, neg_label]).tolist()
-        self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
-        self.datalist = ['data_{}_{}.pt'.format(i, self.split) for i in range(len(self.links))]
-        #print()
-        #print(max(data['relation'].tolist())).
+            self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
+            self.relations = torch.cat([pos_label, neg_label]).tolist()
+            self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
+            self.datalist = ['data_{}_{}.pt'.format(i, self.split) for i in range(len(self.links))]
+            #print()
+            #print(max(data['relation'].tolist())).
 
-        #self.A = ssp.csr_matrix(
-        #(self.data['relation'].tolist(), (self.data['head'], self.data['tail'])), 
-        #shape=(self.num_nodes, self.num_nodes))
+            #self.A = ssp.csr_matrix(
+            #(self.data['relation'].tolist(), (self.data['head'], self.data['tail'])), 
+            #shape=(self.num_nodes, self.num_nodes))
 
 
-
+        print("Done")
         super(Directed_Dataset, self).__init__(root, transform, pre_transform)
 
     @property
@@ -112,6 +113,8 @@ class Directed_Dataset(Dataset):
 
     # def download(self):
     #     return
+    def __len__(self):
+        return len(self.datalist)
 
     def process(self):
         for idx in tqdm(range(len(self.links))):
@@ -147,9 +150,11 @@ class Directed_Dataset(Dataset):
 
         self.process()
 
-    def __repr__(self):
-        return '{}()'.format(self.name)
-
+    #def __repr__(self):
+    #    return '{}()'.format(self.name)
+    def get(self, idx):
+        data = torch.load(osp.join(self.processed_dir, 'data_{}_{}.pt'.format(idx, self.split)))
+        return data  
 def citation_datasets(features, node_weights, edges,  num_nodes, node_ids, labels, alpha=0.1, adj_type=None):
     # path = os.path.join(save_path, dataset)
     indices = edges.t()
@@ -206,7 +211,7 @@ def get_pos_neg_edges(split, split_edge, edge_index=None, num_nodes=None, percen
     perm = np.random.permutation(num_source)
     perm = perm[:int(percent / 100 * num_source)]
     pos_edge = pos_edges[:, perm]
-    pos_rel = relation[:, perm]
+    pos_rel = relation[perm]
 
     if split == 'train':
         neg_edge = negative_sampling(
@@ -227,7 +232,7 @@ def get_pos_neg_edges(split, split_edge, edge_index=None, num_nodes=None, percen
         target_neg_head = split_edge[split]['head_neg']
         target_neg_tail = split_edge[split]['tail_neg']
 
-        source, target, target_neg_head, target_neg_tail = source[perm], target[perm], target_neg_head[perm, :], target_neg_tail[perm, :]
+        source, target, target_neg_head, target_neg_tail = source[perm], target[perm], target_neg_head[perm], target_neg_tail[perm]
         neg_edge = torch.stack([target_neg_head.view(-1), target_neg_tail.view(-1)])
     #neg_per_target = target_neg.size(1)
     #neg_edge = torch.stack([source.repeat_interleave(neg_per_target), 
