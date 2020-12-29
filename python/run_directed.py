@@ -283,39 +283,40 @@ total = 0
 skip = {}
 
 #print()
-for key in data['num_nodes_dict'].keys():
-    #print(f'{key}: {total}')
-    skip[key] = total
-    total += data['num_nodes_dict'][key]
+if not skip_data_processing:
+    for key in data['num_nodes_dict'].keys():
+        #print(f'{key}: {total}')
+        skip[key] = total
+        total += data['num_nodes_dict'][key]
 
-word2idx = {
-    "disease": 1,
-    "function": 2,
-    "drug": 3,
-    "sideeffect": 4,
-    "protein": 5
-}
+    word2idx = {
+        "disease": 1,
+        "function": 2,
+        "drug": 3,
+        "sideeffect": 4,
+        "protein": 5
+    }
 
-#print(train_data['head'][0])
-#print(train_data['tail'][0])
-#print(train_data['head_type'][0])
-#print(train_data['tail_type'][0])
 
-node_type= list(range(num_nodes))
-new_head, new_tail = [], []
-for edge in range(len(train_data['relation'])):
-    node_type[train_data['head'][edge] + skip[train_data['head_type'][edge]]] = word2idx[train_data['head_type'][edge]]
-    node_type[train_data['tail'][edge] + skip[train_data['tail_type'][edge]]] = word2idx[train_data['tail_type'][edge]]
-    new_head.append(train_data['head'][edge] + skip[train_data['head_type'][edge]])
-    new_tail.append(train_data['tail'][edge] + skip[train_data['tail_type'][edge]])
-node_type = torch.LongTensor(node_type)
-train_data['head'] = torch.LongTensor(new_head)
-train_data['tail'] = torch.LongTensor(new_tail)
-train_data['node_class'] = node_type
+    node_type= list(range(num_nodes))
+    new_head, new_tail = [], []
+    for edge in range(len(train_data['relation'])):
+        node_type[train_data['head'][edge] + skip[train_data['head_type'][edge]]] = word2idx[train_data['head_type'][edge]]
+        node_type[train_data['tail'][edge] + skip[train_data['tail_type'][edge]]] = word2idx[train_data['tail_type'][edge]]
+        new_head.append(train_data['head'][edge] + skip[train_data['head_type'][edge]])
+        new_tail.append(train_data['tail'][edge] + skip[train_data['tail_type'][edge]])
+    node_type = torch.LongTensor(node_type)
+    train_data['head'] = torch.LongTensor(new_head)
+    train_data['tail'] = torch.LongTensor(new_tail)
+    train_data['node_class'] = node_type
 
-train_data['relation'] += 1
-#print(len(train_data['head'][train_data['head'] == 30622]))
+    train_data['relation'] += 1
+    #print(len(train_data['head'][train_data['head'] == 30622]))
+else: 
+    train_data, split_edge = None, None
+
 print("Finished")
+
 if not args.skip_graph_generation: 
     G = nx.MultiDiGraph()
     edges = torch.stack([train_data['head'], train_data['tail']]).t()

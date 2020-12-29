@@ -58,44 +58,47 @@ class Directed_Dataset(Dataset):
         self.max_nodes_per_hop = max_nodes_per_hop
         self.A = A
         print(f"Processing {split} dataset...")
-        if split != 'train' and not skip_data_processing: 
-            current_data= split_edge[split]
-            total = 0
-            skip = {}
-            for key in node_dict.keys(): 
-                skip[key] = total
-                total += node_dict[key]
+        if not skip_data_procesing:
+            if split != 'train': 
+                current_data= split_edge[split]
+                total = 0
+                skip = {}
+                for key in node_dict.keys(): 
+                    skip[key] = total
+                    total += node_dict[key]
 
-            new_head, new_tail = [], []
-            for edge in tqdm(range(len(current_data['relation']))): 
-                new_head.append(current_data['head'][edge] + skip[current_data['head_type'][edge]])
-                new_tail.append(current_data['tail'][edge] + skip[current_data['tail_type'][edge]])
+                new_head, new_tail = [], []
+                for edge in tqdm(range(len(current_data['relation']))): 
+                    new_head.append(current_data['head'][edge] + skip[current_data['head_type'][edge]])
+                    new_tail.append(current_data['tail'][edge] + skip[current_data['tail_type'][edge]])
+                
+                current_data['head'] = torch.LongTensor(new_head)
+                current_data['tail'] = torch.LongTensor(new_tail)
+                
+                new_head, new_tail = [], [] 
+                for edge in tqdm(range(len(current_data['relation']))): 
+                    new_head += current_data['head_neg'][edge] + skip[current_data['head_type'][edge]]
+                    new_tail += current_data['tail_neg'][edge] + skip[current_data['tail_type'][edge]]
+                
+                current_data['head_neg'] = torch.LongTensor(new_head)
+                current_data['tail_neg'] = torch.LongTensor(new_tail)
+
+                current_data['relation'] += 1
             
-            current_data['head'] = torch.LongTensor(new_head)
-            current_data['tail'] = torch.LongTensor(new_tail)
-            
-            new_head, new_tail = [], [] 
-            for edge in tqdm(range(len(current_data['relation']))): 
-                new_head += current_data['head_neg'][edge] + skip[current_data['head_type'][edge]]
-                new_tail += current_data['tail_neg'][edge] + skip[current_data['tail_type'][edge]]
-            
-            current_data['head_neg'] = torch.LongTensor(new_head)
-            current_data['tail_neg'] = torch.LongTensor(new_tail)
+                self.x = data['node_class']
+                #self.data['relation'] = self.data['relation'] + 1
 
-            current_data['relation'] += 1
-        
-        if not skip_data_processing: 
-            self.x = data['node_class']
-            #self.data['relation'] = self.data['relation'] + 1
+                pos_edge, pos_label, neg_edge, neg_label = get_pos_neg_edges(split, self.split_edge, 
+                                                   num_nodes = self.num_nodes, 
+                                                   percent = self.percent)
 
-            pos_edge, pos_label, neg_edge, neg_label = get_pos_neg_edges(split, self.split_edge, 
-                                               num_nodes = self.num_nodes, 
-                                               percent = self.percent)
-
-            self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
-            self.relations = torch.cat([pos_label, neg_label]).tolist()
-            self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
-            self.datalist = ['data_{}_{}.pt'.format(i, self.split) for i in range(len(self.links))]
+                self.links = torch.cat([pos_edge, neg_edge], 1).t().tolist()
+                self.relations = torch.cat([pos_label, neg_label]).tolist()
+                self.labels = [1] * pos_edge.size(1) + [0] * neg_edge.size(1)
+                self.datalist = ['data_{}_{}.pt'.format(i, self.split) for i in range(len(self.links))]
+        else: 
+            self.datalist = [os.path.basename(file) for file in glob.glob(osp.join(self.processed_dir, 
+                                                                              '*{}.pt'.format(self.split)))]
             #print()
             #print(max(data['relation'].tolist())).
 
