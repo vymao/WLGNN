@@ -53,13 +53,11 @@ def train():
     for data in pbar:
         #if not args.multi_gpu: data = data.to(device)
         data = data.to(device)
-        print("data sent")
         optimizer.zero_grad()
         #print(data)
         #print(args)
         #out = model(data).view(-1)
-        out = model(data)
-        print("predicted")
+        out = model(data).view(-1)
         if args.multi_gpu: y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
         else: y = data.y.to(torch.float)
 
@@ -81,7 +79,7 @@ def test():
         #x = data.x if args.use_feature else None
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
-        out = model(data)
+        out = model(data).view(-1)
         out = torch.round(out.view(-1)).cpu()
         
         if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
@@ -122,6 +120,7 @@ def test():
     pos_test_pred = test_pred[test_true==1]
     neg_test_pred = test_pred[test_true==0]
 
+    results = {}
     results['MRR'] = evaluate_mrr(pos_val_pred, neg_val_pred, pos_test_pred, neg_test_pred)
     results['AUC'] = evaluate_auc(val_pred, val_true, test_pred, test_true)
     return results
@@ -422,14 +421,7 @@ if args.multi_gpu: test_loader = DataListLoader(test_dataset, batch_size=args.ba
 else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
                      num_workers=args.num_workers)
 print("Training...")
-print(train_dataset)
-print(train_dataset[:5])
-for data in train_loader:
-    print("here")
-    print(data)
-    print("no here")
-    for key, item in data:
-        print(item.requires_grad)
+evaluator = Evaluator(name=args.dataset)
 
 for run in range(args.runs):
     emb = None
@@ -437,8 +429,8 @@ for run in range(args.runs):
                   #max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                   #node_embedding=emb)
 
-    if args.aggregation == 'sum': model = Sparse_Three_Sum(train_dataset, args.node_embed_dim * 2 + 52, args.hidden_channels, 1, args.dropout)
-    else: model = Sparse_Three_Concat(train_dataset, args.node_embed_dim * 2 + 52, args.hidden_channels, 1, args.dropout)
+    if args.aggregation == 'sum': model = Sparse_Three_Sum(train_dataset, args.node_embed_dim, args.hidden_channels, 1, args.dropout)
+    else: model = Sparse_Three_Concat(train_dataset, args.node_embed_dim, args.hidden_channels, 1, args.dropout)
 
     wandb.watch(model)
 
@@ -482,20 +474,20 @@ for run in range(args.runs):
                 torch.save(model.state_dict(), model_name)
                 torch.save(optimizer.state_dict(), optimizer_name)
 
-                valid_res_AUC, test_res_AUC = result['AUC']
-                valid_res_MRR, test_res_MRR = result['MRR']
+                valid_res_AUC, test_res_AUC = results['AUC']
+                valid_res_MRR, test_res_MRR = results['MRR']
 
-                wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized CrossEntropy Train Loss": loss,
+                wandb.log({"Run": run,"Epoch": epoch, "Epoch Normalized BCE Train Loss": loss,
                     "Valid_set MRR": valid_res_MRR, "Test_set MRR": test_res_MRR, "Valid_set AUC": valid_res_AUC, 
                     "Test_set AUC": valid_res_AUC})
 
                 print(f'Run: {run + 1:02d}, '
                       f'Epoch: {epoch:02d}, '
                       f'Loss: {loss:.4f}, '
-                      f'Valid MRR: {valid_res_MRR:.2f}%, '
-                      f'Test MRR: {test_res_MRR:.2f}% '
-                      f'Valid AUC: {valid_res_AUC:.2f}%, '
-                      f'Test AUC: {test_res_AUC:.2f}% '
+                      f'Valid MRR: {valid_res_MRR:.2f}, '
+                      f'Test MRR: {test_res_MRR:.2f} '
+                      f'Valid AUC: {valid_res_AUC:.2f}, '
+                      f'Test AUC: {test_res_AUC:.2f} '
                       )
         gc.collect()
 print(f'Results are saved in {args.res_dir}')

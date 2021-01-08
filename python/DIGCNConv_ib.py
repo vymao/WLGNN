@@ -85,19 +85,11 @@ class Sparse_Three_Sum(torch.nn.Module):
         self.ib1.reset_parameters()
         self.ib2.reset_parameters()
         self.ib3.reset_parameters()
+        self.final.reset_parameters()
 
     def forward(self, data):
-        x, edge_index, edge_weight, node_weights = data.x, data.edge_index, data.edge_weight, data.node_weights
+        x, edge_index, edge_weight, batch = data.x, data.edge_index, data.edge_weight, data.batch
         edge_index2, edge_weight2 = data.edge_index2, data.edge_weight2
-
-        src_class = class_embedding(node_weights[:,0])
-        dst_class = class_emebedding(node_weights[:, 1])
-        src_z = z_embedding(node_weights[:, 2])
-        dst_z = z_embedding(node_weights[:, 3])
-
-        #src, end = node_class.t()
-        #src, end = embedding(src), embedding(end)
-        x = torch.cat([x, src_class, dist_class, src_z, dst_z], 1)
         
         x0,x1,x2 = self.ib1(x, edge_index, edge_weight, edge_index2, edge_weight2)
         x0 = F.dropout(x0, p=self.dropout, training=self.training)
@@ -118,6 +110,14 @@ class Sparse_Three_Sum(torch.nn.Module):
         x1 = F.dropout(x1, p=self.dropout, training=self.training)
         x2 = F.dropout(x2, p=self.dropout, training=self.training)
         x = x0+x1+x2
+
+        x0,x1,x2 = self.final(x, edge_index, edge_weight, edge_index2, edge_weight2)
+        x0 = F.dropout(x0, p=self.dropout, training=self.training)
+        x1 = F.dropout(x1, p=self.dropout, training=self.training)
+        x2 = F.dropout(x2, p=self.dropout, training=self.training)
+        y = x0+x1+x2
+
+        x = torch.cat([x, y], 1)
 
          # Global pooling.
         x = global_sort_pool(x, batch, self.k)
