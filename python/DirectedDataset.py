@@ -113,7 +113,7 @@ class Directed_Dataset(Dataset):
 
 
         print("Done")
-        super(Directed_Dataset, self).__init__(root, transform, pre_transform)
+        super(Directed_Dataset, self).__init__(root)
 
     @property
     def processed_file_names(self):
