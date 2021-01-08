@@ -209,8 +209,8 @@ def construct_line_graph_directed(node_ids, A, nx_A, node_features, z, s, d, lab
         node_feature = [node_features[node[0]], node_features[node[1]], node_dict[node[0]], node_dict[node[1]]]
         weight_vector = [0] * 52 + [node in A_edges_forward]
         weight_vector[node[2]] = 1
-        L_node_weights.append(weight_vector)
-        L_node_features.append(node_feature)
+        L_node_weights.append(node_feature)
+        L_node_features.append(weight_vector)
 
         index[node] = value
         value += 1

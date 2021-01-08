@@ -51,13 +51,15 @@ def train():
     total_loss = 0
     pbar = tqdm(train_loader)
     for data in pbar:
-        if not args.multi_gpu: data = data.to(device)
+        #if not args.multi_gpu: data = data.to(device)
+        data = data.to(device)
+        print("data sent")
         optimizer.zero_grad()
         #print(data)
         #print(args)
         #out = model(data).view(-1)
         out = model(data)
-
+        print("predicted")
         if args.multi_gpu: y = torch.cat([d.y.to(torch.float) for d in data]).to(out.device)
         else: y = data.y.to(torch.float)
 
@@ -283,7 +285,7 @@ total = 0
 skip = {}
 
 #print()
-if not skip_data_processing:
+if not args.skip_data_processing:
     for key in data['num_nodes_dict'].keys():
         #print(f'{key}: {total}')
         skip[key] = total
@@ -332,6 +334,10 @@ else:
     print("Skipping graph generation")
     G = None
 
+class_embedding = Embedding(10, args.node_embed_dim)
+z_embedding = Embedding(1000, args.node_embed_dim)
+
+
 dataset_class = 'Directed_Dataset' 
 train_dataset = eval(dataset_class)(
     path, 
@@ -349,6 +355,8 @@ train_dataset = eval(dataset_class)(
     max_nodes_per_hop=args.max_nodes_per_hop, 
     adj_type = args.adj_type,
     skip_data_processing = args.skip_data_processing,
+    class_embed = class_embedding,
+    z_embed = z_embedding,
 ) 
 
 dataset_class = 'Directed_Dataset' 
@@ -368,6 +376,8 @@ val_dataset = eval(dataset_class)(
     max_nodes_per_hop=args.max_nodes_per_hop, 
     adj_type = args.adj_type,
     skip_data_processing = args.skip_data_processing,
+    class_embed = class_embedding,
+    z_embed = z_embedding,
 )
 
 dataset_class = 'Directed_Dataset' 
@@ -387,6 +397,8 @@ test_dataset = eval(dataset_class)(
     max_nodes_per_hop=args.max_nodes_per_hop, 
     adj_type = args.adj_type,
     skip_data_processing = args.skip_data_processing,
+    class_embed = class_embedding,
+    z_embed = z_embedding,
 )
 print('Using', torch.cuda.device_count(), 'GPUs!')
 
@@ -409,6 +421,15 @@ if args.multi_gpu: test_loader = DataListLoader(test_dataset, batch_size=args.ba
                      num_workers=args.num_workers)
 else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
                      num_workers=args.num_workers)
+print("Training...")
+print(train_dataset)
+print(train_dataset[:5])
+for data in train_loader:
+    print("here")
+    print(data)
+    print("no here")
+    for key, item in data:
+        print(item.requires_grad)
 
 for run in range(args.runs):
     emb = None
@@ -416,8 +437,8 @@ for run in range(args.runs):
                   #max_z=max_z, k=args.sortpool_k, use_feature=args.use_feature, 
                   #node_embedding=emb)
 
-    if args.aggregation == 'sum': model = Sparse_Three_Sum(node_embed_dim * 2 + 52, args.hidden_channels, 10, args.dropout)
-    else: model = Sparse_Three_Concat(node_embed_dim * 2 + 52, args.hidden_channels, 10, args.dropout)
+    if args.aggregation == 'sum': model = Sparse_Three_Sum(train_dataset, args.node_embed_dim * 2 + 52, args.hidden_channels, 1, args.dropout)
+    else: model = Sparse_Three_Concat(train_dataset, args.node_embed_dim * 2 + 52, args.hidden_channels, 1, args.dropout)
 
     wandb.watch(model)
 
@@ -446,7 +467,7 @@ for run in range(args.runs):
                   f'Valid: {100 * valid_res:.2f}%, '
                   f'Test: {100 * test_res:.2f}%')
         exit()
-   
+    print("Beginning training...")
     for epoch in range(start_epoch, start_epoch + args.epochs):
         loss = train()
 

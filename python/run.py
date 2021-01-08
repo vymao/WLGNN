@@ -425,6 +425,13 @@ else: test_loader = DataLoader(test_dataset, batch_size=args.batch_size,
 
 if "social" in args.dataset: dataset = None
 
+print("Training...")
+print(train_dataset)
+print(train_dataset[:5])
+for data in train_loader:
+    for key, item in data:
+        print(item.requires_grad)
+
 for run in range(args.runs):
     emb = None
     if args.use_orig_graph: model = DGCNN(args, train_dataset, dataset, hidden_channels=args.hidden_channels, num_layers=args.num_layers, 

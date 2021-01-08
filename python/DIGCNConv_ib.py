@@ -1,6 +1,7 @@
 import argparse
 import torch
 import os
+import math
 import numpy as np
 import pandas as pd
 import torch.nn.functional as F
@@ -51,8 +52,8 @@ class Sparse_Three_Sum(torch.nn.Module):
             k = max(10, k)
         self.k = int(k)
 
-        self.class_embedding = Embedding(10, input_dim)
-        self.z_embedding = Embedding(1000, input_dim)
+        self.class_embedding = Embedding(10, feature_dim)
+        self.z_embedding = Embedding(1000, feature_dim)
         self.word2idx = {
             "disease": 1,
             "function": 2,
@@ -60,6 +61,9 @@ class Sparse_Three_Sum(torch.nn.Module):
             "sideeffect": 4,
             "protein": 5
         }
+ 
+        input_dim = 4 * feature_dim + 53
+        self.ib1 = InceptionBlock(input_dim, hidden_dim)
         self.ib2 = InceptionBlock(hidden_dim, hidden_dim)
         self.ib3 = InceptionBlock(hidden_dim, hidden_dim)
         self.final = InceptionBlock(hidden_dim, 1)
