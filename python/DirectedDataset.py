@@ -81,10 +81,12 @@ class Directed_Dataset(Dataset):
                 current_data['tail'] = torch.LongTensor(new_tail)
                 
                 new_head, new_tail = [], [] 
-                for edge in tqdm(range(len(current_data['relation']))): 
-                    new_head += current_data['head_neg'][edge] + skip[current_data['head_type'][edge]]
-                    new_tail += current_data['tail_neg'][edge] + skip[current_data['tail_type'][edge]]
-                
+                for edge in tqdm(range(len(current_data['relation']))):
+                    h = current_data['head_neg'][edge] + skip[current_data['head_type'][edge]]
+                    t = current_data['tail_neg'][edge] + skip[current_data['tail_type'][edge]]
+                    new_head.append(h.tolist())
+                    new_tail.append(t.tolist())
+ 
                 current_data['head_neg'] = torch.LongTensor(new_head)
                 current_data['tail_neg'] = torch.LongTensor(new_tail)
 
@@ -161,8 +163,8 @@ class Directed_Dataset(Dataset):
             return
         if self.split == 'test' and len(glob.glob(osp.join(self.processed_dir, '*test.pt'))) > 0:
             return
-        if self.split == 'valid' and len(glob.glob(osp.join(self.processed_dir, '*valid.pt'))) > 0:
-            return
+        #if self.split == 'valid' and len(glob.glob(osp.join(self.processed_dir, '*valid.pt'))) > 0:
+        #    return
 
         self.process()
 
@@ -248,7 +250,7 @@ def get_pos_neg_edges(split, split_edge, edge_index=None, num_nodes=None, percen
         target_neg_head = split_edge[split]['head_neg']
         target_neg_tail = split_edge[split]['tail_neg']
 
-        source, target, target_neg_head, target_neg_tail = source[perm], target[perm], target_neg_head[perm], target_neg_tail[perm]
+        source, target, target_neg_head, target_neg_tail = source[perm], target[perm], target_neg_head[perm, :], target_neg_tail[perm, :]
         neg_edge = torch.stack([target_neg_head.view(-1), target_neg_tail.view(-1)])
     #neg_per_target = target_neg.size(1)
     #neg_edge = torch.stack([source.repeat_interleave(neg_per_target), 

@@ -113,9 +113,11 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, src, dst, label):
     #r = torch.LongTensor(r)
     #edge_index = torch.stack([u, v], 0)
     #edge_weight = r.to(torch.float)
-
-    csr_adj = to_scipy_sparse_matrix(adj, nodelist = node_ids)
+    
+    csr_adj = to_scipy_sparse_matrix(adj, nodelist = list(dict.fromkeys(node_ids)))
     z = drnl_node_labeling(csr_adj, 0, 1)
+    print(z)
+    print(node_ids)
     node_dict = dict(zip(node_ids, z))
     L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, csr_adj, adj, node_features, 
                                                                                                     z, src, dst, label, node_dict)

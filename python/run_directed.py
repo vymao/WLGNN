@@ -79,8 +79,7 @@ def test():
         #x = data.x if args.use_feature else None
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
-        out = model(data).view(-1)
-        out = torch.round(out.view(-1)).cpu()
+        out = model(data).view(-1).cpu()
         
         if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
         else: y = data.y.view(-1).cpu().to(torch.float)
@@ -103,8 +102,7 @@ def test():
         #x = data.x if args.use_feature else None
         #edge_weight = data.edge_weight if args.use_edge_weight else None
         #node_id = data.node_id if emb else None
-        out = model(data)
-        out = torch.round(out).view(-1).cpu()
+        out = model(data).view(-1).cpu()
 
         if args.multi_gpu: y = torch.cat([d.y.view(-1).cpu().to(torch.float) for d in data])
         else: y = data.y.view(-1).cpu().to(torch.float)
