@@ -163,8 +163,8 @@ class Directed_Dataset(Dataset):
             return
         if self.split == 'test' and len(glob.glob(osp.join(self.processed_dir, '*test.pt'))) > 0:
             return
-        #if self.split == 'valid' and len(glob.glob(osp.join(self.processed_dir, '*valid.pt'))) > 0:
-        #    return
+        if self.split == 'valid' and len(glob.glob(osp.join(self.processed_dir, '*valid.pt'))) > 0:
+            return
 
         self.process()
 

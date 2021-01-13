@@ -93,11 +93,15 @@ def drnl_node_labeling(adj, src, dst):
 
     z = 1 + torch.min(dist2src, dist2dst)
     z += dist_over_2 * (dist_over_2 + dist_mod_2 - 1)
-    z += 1
-    z[src] = 0.
-    z[dst] = 1.
+    z += 2
+
+    if src == dst: 
+        z[src] = 2
+    else: 
+        z[src] = 0.
+        z[dst] = 1.    
     z[torch.isnan(z)] = 0.
-    z[torch.isinf(z)] = 2.
+    z[torch.isinf(z)] = 3.
 
     return z
 
@@ -113,11 +117,9 @@ def construct_pyg_graph(node_ids, adj, dists, node_features, src, dst, label):
     #r = torch.LongTensor(r)
     #edge_index = torch.stack([u, v], 0)
     #edge_weight = r.to(torch.float)
-    
-    csr_adj = to_scipy_sparse_matrix(adj, nodelist = list(dict.fromkeys(node_ids)))
+    node_ids = list(dict.fromkeys(node_ids)) 
+    csr_adj = to_scipy_sparse_matrix(adj, nodelist = node_ids)
     z = drnl_node_labeling(csr_adj, 0, 1)
-    print(z)
-    print(node_ids)
     node_dict = dict(zip(node_ids, z))
     L_node_features, L_edges,  L_num_nodes, L_node_ids, L_node_classes = construct_line_graph_directed(node_ids, csr_adj, adj, node_features, 
                                                                                                     z, src, dst, label, node_dict)
